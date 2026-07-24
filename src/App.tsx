@@ -14,6 +14,7 @@ import { SellerDashboard } from './components/SellerDashboard';
 import { OrdersModal } from './components/OrdersModal';
 import { WishlistModal } from './components/WishlistModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { NotificationsModal } from './components/NotificationsModal';
 import { Product } from './types';
 import { db } from './lib/firebase';
 import { SEED_PRODUCTS } from './data/seedProducts';
@@ -66,6 +67,7 @@ function MarketplaceMain() {
   const [sellerDashboardOpen, setSellerDashboardOpen] = useState(false);
   const [adminDashboardOpen, setAdminDashboardOpen] = useState(false);
   const [wishlistModalOpen, setWishlistModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
 
@@ -284,6 +286,10 @@ function MarketplaceMain() {
           else setSellerDashboardOpen(true);
         }}
         onOpenAdmin={() => setAdminDashboardOpen(true)}
+        onOpenNotifications={() => {
+          if (!currentUser) setAuthModalOpen(true);
+          else setNotificationsModalOpen(true);
+        }}
         onSelectCategory={setSelectedCategory}
         selectedCategory={selectedCategory}
         searchQuery={searchQuery}
@@ -636,6 +642,10 @@ function MarketplaceMain() {
         isOpen={wishlistModalOpen}
         onClose={() => setWishlistModalOpen(false)}
         onSelectProduct={handleSelectProduct}
+      />
+      <NotificationsModal
+        isOpen={notificationsModalOpen}
+        onClose={() => setNotificationsModalOpen(false)}
       />
       <ProductDetailModal
         product={selectedProduct}

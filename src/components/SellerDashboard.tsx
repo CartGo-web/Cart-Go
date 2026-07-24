@@ -672,6 +672,24 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
 
           {activeTab === 'add' && (
             <form onSubmit={handleAddProduct} className="space-y-4">
+              {/* 3% Company Commission Banner */}
+              <div className="p-3.5 bg-gradient-to-r from-orange-500/15 via-amber-500/15 to-orange-500/15 border-2 border-[#FF5500]/40 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-[#FF5500] text-white rounded-xl shadow-xs shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-900 block">Company Sale Fee Policy</span>
+                    <p className="text-xs text-[#FF5500] font-extrabold">
+                      3 percent of your sale will be given to our company.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-extrabold bg-[#FF5500] text-white px-2.5 py-1 rounded-full uppercase shrink-0">
+                  3% Fee
+                </span>
+              </div>
+
               {/* Courier Delivery & Support Notice */}
               <div className="p-4 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-orange-200/90 rounded-2xl shadow-xs space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -1199,6 +1217,22 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                       Merchant guidelines, courier configuration, delivery charges, and support information
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* 3% Company Sale Commission Fee Section */}
+              <div className="p-5 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 border-2 border-[#FF5500]/40 rounded-2xl space-y-2 shadow-xs">
+                <div className="flex items-center gap-2.5 text-slate-900 font-extrabold text-sm">
+                  <Sparkles className="w-5 h-5 text-[#FF5500]" />
+                  <span>Company Sale Fee Policy</span>
+                </div>
+                <div className="p-3.5 bg-white rounded-xl border border-orange-200 text-xs space-y-1">
+                  <p className="font-extrabold text-[#FF5500] text-sm">
+                    3 percent of your sale will be given to our company.
+                  </p>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    Cart Go charges a flat 3% commission on completed seller sales to maintain database synchronization, cloud security, merchant tools, and platform hosting.
+                  </p>
                 </div>
               </div>
 

@@ -61,7 +61,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [targetSeller, setTargetSeller] = useState<string>('all');
   const [sendingNotif, setSendingNotif] = useState(false);
   const [notifSuccess, setNotifSuccess] = useState<string | null>(null);
-  const [showSellersOnly, setShowSellersOnly] = useState(true);
+  const [showSellersOnly, setShowSellersOnly] = useState(false);
   const [resettingData, setResettingData] = useState(false);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
 
@@ -117,28 +117,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       }
     );
 
-    // Fetch Notifications
-    const fetchNotifs = async () => {
-      try {
-        const notifsSnap = await getDocs(
-          query(collection(db, 'notifications'), orderBy('createdAt', 'desc'))
-        );
+    // Live subscription to Notifications collection
+    const unsubNotifs = onSnapshot(
+      query(collection(db, 'notifications'), orderBy('createdAt', 'desc')),
+      (snapshot) => {
         const fetchedNotifs: SellerNotification[] = [];
-        notifsSnap.forEach((docSnap) => {
+        snapshot.forEach((docSnap) => {
           fetchedNotifs.push({ id: docSnap.id, ...docSnap.data() } as SellerNotification);
         });
         setNotificationsList(fetchedNotifs);
-      } catch (err) {
-        console.warn('Notifications fetch note:', err);
+      },
+      (err) => {
+        console.warn('Notifications listener note:', err);
       }
-    };
-
-    fetchNotifs();
+    );
 
     return () => {
       unsubUsers();
       unsubOrders();
       unsubProducts();
+      unsubNotifs();
     };
   }, [isOpen]);
 
@@ -267,7 +265,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     setNotifSuccess(null);
 
     const targetUserObj = usersList.find((u) => u.uid === targetSeller);
-    const recipientLabel = targetSeller === 'all' ? 'All Sellers' : (targetUserObj?.displayName || 'Selected Seller');
+    let recipientLabel = 'All Registered Users';
+    if (targetSeller === 'all') recipientLabel = '📢 All Users (Buyers & Sellers)';
+    else if (targetSeller === 'sellers') recipientLabel = '🏪 All Sellers';
+    else if (targetSeller === 'buyers') recipientLabel = '🛍️ All Buyers';
+    else if (targetUserObj)
+      recipientLabel = `👤 ${targetUserObj.displayName || targetUserObj.email} (${targetUserObj.role || 'user'})`;
 
     const newNotif: Omit<SellerNotification, 'id'> = {
       title: notifTitle,
@@ -279,11 +282,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
     try {
       const docRef = await addDoc(collection(db, 'notifications'), newNotif);
-      setNotificationsList((prev) => [{ id: docRef.id, ...newNotif }, ...prev]);
       setNotifTitle('');
       setNotifMessage('');
       setNotifSuccess(`Notification successfully sent to ${recipientLabel}!`);
-      setTimeout(() => setNotifSuccess(null), 4000);
+      setTimeout(() => setNotifSuccess(null), 5000);
     } catch (err) {
       console.error('Error sending notification:', err);
       alert('Failed to send notification. Please try again.');
@@ -374,17 +376,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     (u) =>
       u.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      u.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.role?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredSellers = allSellerProfiles.filter(
     (s) =>
       s.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      s.phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.role?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const displayUsersList = showSellersOnly ? filteredSellers : filteredUsers;
+  const baseUsersList = showSellersOnly ? filteredSellers : filteredUsers;
+
+  // Sort newest registrations first
+  const displayUsersList = [...baseUsersList].sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
+  });
 
   // Filter orders by year and month
   const filteredOrders = ordersList.filter((order) => {
@@ -549,6 +560,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                       />
                     </div>
                     <div className="flex items-center gap-3">
+                      <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-bold relative">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 absolute"></span>
+                        <span className="ml-2">Real-time Sync Active</span>
+                      </div>
                       <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                         <button
                           type="button"
@@ -859,21 +875,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                     <form onSubmit={handleSendNotification} className="space-y-4">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          Select Recipient Seller(s)
+                          Select Recipient (Group or Individual Person Separately)
                         </label>
                         <select
                           value={targetSeller}
                           onChange={(e) => setTargetSeller(e.target.value)}
                           className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
                         >
-                          <option value="all">📢 Broadcast to ALL Registered Sellers</option>
-                          {usersList
-                            .filter((u) => u.role === 'seller' || u.role === undefined)
-                            .map((s) => (
-                              <option key={s.uid} value={s.uid}>
-                                👤 {s.displayName || 'Seller Store'} ({s.phone ? `Phone: ${s.phone}` : s.email})
+                          <option value="all">📢 Broadcast to EVERYONE (All Buyers & Sellers)</option>
+                          <option value="sellers">🏪 Broadcast to ALL Sellers Only</option>
+                          <option value="buyers">🛍️ Broadcast to ALL Buyers Only</option>
+                          <optgroup label="👤 Send Direct Message to Individual Person Separately">
+                            {usersList.map((u) => (
+                              <option key={u.uid} value={u.uid}>
+                                {u.role === 'seller' ? '🏪 Seller:' : u.role === 'admin' ? '⚡ Admin:' : '🛍️ Buyer:'} {u.displayName || 'User'} ({u.email} {u.phone ? `| Phone: ${u.phone}` : ''})
                               </option>
                             ))}
+                          </optgroup>
                         </select>
                       </div>
 

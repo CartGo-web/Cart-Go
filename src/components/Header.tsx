@@ -13,6 +13,7 @@ import {
   X,
   PlusCircle,
   ArrowLeft,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -25,6 +26,7 @@ interface HeaderProps {
   onOpenOrders: () => void;
   onOpenSeller: () => void;
   onOpenAdmin?: () => void;
+  onOpenNotifications?: () => void;
   onSelectCategory: (categoryId: string | null) => void;
   selectedCategory: string | null;
   searchQuery: string;
@@ -38,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenOrders,
   onOpenSeller,
   onOpenAdmin,
+  onOpenNotifications,
   onSelectCategory,
   selectedCategory,
   searchQuery,
@@ -61,10 +64,14 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-600 hidden sm:inline">|</span>
             <button
               onClick={onOpenSeller}
-              className="hover:text-orange-400 font-medium flex items-center gap-1.5 text-orange-400"
+              className="hover:text-orange-400 font-medium flex items-center gap-1.5 text-orange-400 transition-colors"
+              title="Sell on Cart Go - 3 percent of your sale will be given to our company"
             >
               <Store className="w-3.5 h-3.5" />
               <span>Sell on Cart Go</span>
+              <span className="text-[10px] bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded-md border border-orange-400/30 font-semibold hidden md:inline">
+                3% sale commission
+              </span>
             </button>
           </div>
           <div className="flex items-center gap-4">
@@ -133,7 +140,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Icons */}
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Wishlist */}
+            {/* Notifications Icon for Logged in Users */}
+            {currentUser && onOpenNotifications && (
+              <button
+                onClick={onOpenNotifications}
+                className="relative p-2 text-white hover:bg-orange-600 rounded-lg transition-colors flex items-center gap-1.5"
+                title="My Notifications & Messages"
+              >
+                <Bell className="w-6 h-6" />
+                <span className="absolute -top-1 -right-1 bg-[#FF5500] text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center border border-slate-900 animate-pulse">
+                  •
+                </span>
+              </button>
+            )}
             <button
               onClick={onOpenWishlist}
               className="relative p-2 text-white hover:bg-orange-600 rounded-lg transition-colors flex items-center gap-1.5"

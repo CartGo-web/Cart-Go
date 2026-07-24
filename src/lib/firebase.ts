@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache, getFirestore, Firestore } from 'firebase/firestore';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -15,8 +15,24 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
-export const db = firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
-  : getFirestore(app);
 
+let firestoreInstance: Firestore;
+try {
+  const dbId =
+    firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
+      ? firebaseConfigData.firestoreDatabaseId
+      : undefined;
+
+  firestoreInstance = dbId
+    ? initializeFirestore(app, { localCache: memoryLocalCache() }, dbId)
+    : initializeFirestore(app, { localCache: memoryLocalCache() });
+} catch (e) {
+  firestoreInstance =
+    firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
+      ? getFirestore(app, firebaseConfigData.firestoreDatabaseId)
+      : getFirestore(app);
+}
+
+export const db = firestoreInstance;
 export default app;
+

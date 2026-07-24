@@ -6,6 +6,8 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -16,6 +18,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
+  loginWithGoogle: (preferredRole?: UserRole) => Promise<void>;
   signup: (email: string, pass: string, name: string, role: UserRole, phone?: string) => Promise<void>;
   logout: () => Promise<void>;
   loginDemoUser: (role: UserRole) => Promise<void>;
@@ -166,13 +169,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      // Check if user is disabled in Firestore
+      // Ensure profile and lastLogin are recorded in Firestore in real-time
       if (userCred.user) {
+        const userRef = doc(db, 'users', userCred.user.uid);
         try {
-          const userDoc = await getDoc(doc(db, 'users', userCred.user.uid));
+          await setDoc(
+            userRef,
+            {
+              uid: userCred.user.uid,
+              email: cleanEmail,
+              lastLogin: new Date().toISOString(),
+            },
+            { merge: true }
+          );
+          const userDoc = await getDoc(userRef);
           if (userDoc.exists() && userDoc.data()?.disabled === true) {
             await signOut(auth);
-            throw new Error('Your account has been disabled by the administrator. Your profile and listed data remain safely saved in our database.');
+            throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
           }
         } catch (checkErr: any) {
           if (checkErr.message?.includes('disabled by the administrator')) {
@@ -206,22 +219,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: cleanEmail.split('@')[0],
           role: 'buyer',
           createdAt: new Date().toISOString(),
+          lastLogin: new Date().toISOString(),
           disabled: false,
         };
         localStorage.setItem('cartgo_local_user', JSON.stringify(fallbackProf));
         setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: fallbackProf.displayName });
         setUserProfile(fallbackProf);
+
+        try {
+          await setDoc(doc(db, 'users', fallbackUid), fallbackProf, { merge: true });
+        } catch (e) {
+          console.warn('Could not save fallback user doc to Firestore:', e);
+        }
         return;
       }
 
       if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-        throw new Error('Invalid email or password. If you do not have an account yet, please click "Register Account".');
+        throw new Error('No account found with this email or invalid password. New users MUST click "Register Account" first to create an account before logging in.');
       } else if (code === 'auth/invalid-email') {
         throw new Error('Please enter a valid email address.');
       } else if (code === 'auth/too-many-requests') {
         throw new Error('Access to this account has been temporarily disabled due to many failed login attempts. Try again later.');
       }
       throw err;
+    }
+  };
+
+  const loginWithGoogle = async (preferredRole: UserRole = 'buyer') => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const res = await signInWithPopup(auth, provider);
+      const user = res.user;
+      if (user) {
+        const isAdminUser = user.email?.toLowerCase() === 'hashirfarman0047@gmail.com';
+        const userRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userRef);
+
+        let prof: UserProfile;
+        if (userDoc.exists()) {
+          prof = userDoc.data() as UserProfile;
+          if (prof.disabled === true && !isAdminUser) {
+            await signOut(auth);
+            throw new Error('Your account has been disabled by the administrator.');
+          }
+          await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
+        } else {
+          prof = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: isAdminUser ? 'Super Admin' : (user.displayName || user.email?.split('@')[0] || 'Cart Go User'),
+            role: isAdminUser ? 'admin' : preferredRole,
+            createdAt: new Date().toISOString(),
+            lastLogin: new Date().toISOString(),
+            disabled: false,
+          };
+          await setDoc(userRef, prof);
+        }
+        setCurrentUser(user);
+        setUserProfile(prof);
+      }
+    } catch (err: any) {
+      console.error('Google Auth login error:', err);
+      if (err.message?.includes('disabled by the administrator')) throw err;
+      throw new Error(err.message || 'Google Authentication failed. Please try email login.');
     }
   };
 
@@ -246,7 +306,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           disabled: false,
         };
         try {
-          await setDoc(doc(db, 'users', res.user.uid), newProf);
+          await setDoc(doc(db, 'users', res.user.uid), newProf, { merge: true });
         } catch (e) {
           console.warn('Could not save user profile doc:', e);
         }
@@ -270,6 +330,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('cartgo_local_user', JSON.stringify(fallbackProf));
         setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: name });
         setUserProfile(fallbackProf);
+
+        try {
+          await setDoc(doc(db, 'users', fallbackUid), fallbackProf, { merge: true });
+        } catch (e) {
+          console.warn('Could not save fallback user doc to Firestore:', e);
+        }
         return;
       }
 
@@ -322,6 +388,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userProfile,
         loading,
         login,
+        loginWithGoogle,
         signup,
         logout,
         loginDemoUser,
