@@ -15,7 +15,7 @@ import { OrdersModal } from './components/OrdersModal';
 import { WishlistModal } from './components/WishlistModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { NotificationsModal } from './components/NotificationsModal';
-import { Product } from './types';
+import { Review, Product } from './types';
 import { db } from './lib/firebase';
 import { SEED_PRODUCTS } from './data/seedProducts';
 import { CATEGORIES } from './data/categories';
@@ -28,6 +28,7 @@ import {
   deleteDoc,
   doc,
   query,
+  where,
 } from 'firebase/firestore';
 import {
   Sparkles,
@@ -42,6 +43,8 @@ import {
   ShieldCheck,
   X,
   ArrowLeft,
+  Star,
+  MessageSquare,
 } from 'lucide-react';
 import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from './utils/share';
 
@@ -70,6 +73,62 @@ function MarketplaceMain() {
   const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
+
+  // Seller Reviews State
+  const [sellerReviews, setSellerReviews] = useState<Review[]>([]);
+  const [newSellerRating, setNewSellerRating] = useState(5);
+  const [newSellerComment, setNewSellerComment] = useState('');
+  const [submittingSellerReview, setSubmittingSellerReview] = useState(false);
+  const [sellerReviewSuccess, setSellerReviewSuccess] = useState(false);
+
+  // Fetch Seller Reviews when store selected
+  useEffect(() => {
+    if (!selectedStoreId) {
+      setSellerReviews([]);
+      return;
+    }
+    const q = query(collection(db, 'reviews'), where('sellerId', '==', selectedStoreId));
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: Review[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Review);
+        });
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setSellerReviews(list);
+      },
+      (err) => console.warn('Seller reviews fetch error:', err)
+    );
+
+    return () => unsub();
+  }, [selectedStoreId]);
+
+  const handleAddSellerReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !selectedStoreId) return;
+    if (!newSellerComment.trim()) return;
+
+    setSubmittingSellerReview(true);
+    try {
+      await addDoc(collection(db, 'reviews'), {
+        sellerId: selectedStoreId,
+        sellerName: storeName || 'Verified Merchant',
+        buyerId: currentUser.uid,
+        buyerName: userProfile?.displayName || 'Verified Buyer',
+        rating: newSellerRating,
+        comment: newSellerComment.trim(),
+        createdAt: new Date().toISOString(),
+      });
+      setNewSellerComment('');
+      setSellerReviewSuccess(true);
+      setTimeout(() => setSellerReviewSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to post seller review:', err);
+    } finally {
+      setSubmittingSellerReview(false);
+    }
+  };
 
   // URL Deep Link Sync Helpers
   const handleSelectProduct = (product: Product | null) => {
@@ -368,7 +427,7 @@ function MarketplaceMain() {
 
         {/* Store Showcase Header Banner */}
         {selectedStoreId && (
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-700 space-y-4 animate-in fade-in duration-200">
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-700 space-y-6 animate-in fade-in duration-200">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#FF9900] to-[#FF5500] flex items-center justify-center text-white font-black text-2xl shadow-lg border-2 border-white/20 shrink-0">
@@ -381,9 +440,19 @@ function MarketplaceMain() {
                       <ShieldCheck className="w-3.5 h-3.5" /> Verified Cart Go Merchant
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 mt-1">
-                    Showing all {storeProducts.length} product{storeProducts.length === 1 ? '' : 's'} listed by this store
-                  </p>
+                  <div className="flex items-center gap-3 text-xs text-slate-300 mt-1">
+                    <span className="flex items-center gap-1 text-amber-400 font-bold">
+                      <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                      {sellerReviews.length > 0
+                        ? (sellerReviews.reduce((sum, r) => sum + r.rating, 0) / sellerReviews.length).toFixed(1)
+                        : '5.0'}{' '}
+                      / 5.0
+                    </span>
+                    <span>•</span>
+                    <span>{sellerReviews.length} Buyer Review{sellerReviews.length === 1 ? '' : 's'}</span>
+                    <span>•</span>
+                    <span>{storeProducts.length} Product{storeProducts.length === 1 ? '' : 's'}</span>
+                  </div>
                 </div>
               </div>
 
@@ -414,6 +483,100 @@ function MarketplaceMain() {
                   <X className="w-4 h-4" />
                   <span>Exit Store View</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Buyer Reviews Section for Seller */}
+            <div className="pt-4 border-t border-slate-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-orange-400 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Buyer Reviews & Ratings for {storeName} ({sellerReviews.length})</span>
+                </h3>
+              </div>
+
+              {/* Form to submit review for seller */}
+              {currentUser ? (
+                <form onSubmit={handleAddSellerReview} className="bg-slate-800/80 p-4 rounded-xl border border-slate-700/80 space-y-3">
+                  <span className="text-xs font-bold text-slate-200 block">Give your review about this seller</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Seller Rating:</span>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setNewSellerRating(s)}
+                          className="p-0.5 focus:outline-none"
+                        >
+                          <Star
+                            className={`w-4 h-4 ${
+                              s <= newSellerRating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    placeholder={`Write your experience with seller ${storeName}...`}
+                    value={newSellerComment}
+                    onChange={(e) => setNewSellerComment(e.target.value)}
+                    className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  />
+
+                  <div className="flex items-center justify-between">
+                    {sellerReviewSuccess ? (
+                      <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> Review submitted for seller!
+                      </span>
+                    ) : (
+                      <span></span>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={submittingSellerReview || !newSellerComment.trim()}
+                      className="px-4 py-2 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {submittingSellerReview ? 'Submitting...' : 'Post Seller Review'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700 text-xs text-slate-400 text-center">
+                  <button
+                    onClick={() => setAuthModalOpen(true)}
+                    className="text-[#FF5500] font-bold hover:underline"
+                  >
+                    Register or Login
+                  </button>{' '}
+                  to submit a review about this seller.
+                </div>
+              )}
+
+              {/* List of Seller Reviews */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1">
+                {sellerReviews.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic col-span-2">
+                    No buyer reviews for this seller yet. Be the first buyer to review {storeName}!
+                  </p>
+                ) : (
+                  sellerReviews.map((rev) => (
+                    <div key={rev.id} className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/80 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200">{rev.buyerName}</span>
+                        <div className="flex items-center gap-0.5 text-amber-400">
+                          {[...Array(rev.rating)].map((_, i) => (
+                            <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed">{rev.comment}</p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -564,7 +727,7 @@ function MarketplaceMain() {
               </li>
               <li className="hover:text-orange-400 cursor-pointer">Help Center & FAQs</li>
               <li className="hover:text-orange-400 cursor-pointer">How to Buy & Track</li>
-              <li className="hover:text-orange-400 cursor-pointer">Returns & Refunds</li>
+              <li className="hover:text-orange-400 cursor-pointer">Merchant & Buyer Policy</li>
             </ul>
           </div>
 

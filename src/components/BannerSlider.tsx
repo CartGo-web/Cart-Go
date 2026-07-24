@@ -139,12 +139,12 @@ export const BannerSlider: React.FC<{ onExploreClick: () => void }> = ({ onExplo
         </div>
 
         <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-lg bg-orange-50 text-[#FF5500] flex items-center justify-center shrink-0">
             <Zap className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-800">Easy Returns</h4>
-            <p className="text-[10px] text-slate-500">7-Day Money Back</p>
+            <h4 className="text-xs font-bold text-slate-800">Cash on Delivery</h4>
+            <p className="text-[10px] text-slate-500">Pay on doorstep delivery</p>
           </div>
         </div>
       </div>

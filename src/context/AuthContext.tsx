@@ -169,32 +169,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      // Ensure profile and lastLogin are recorded in Firestore in real-time
       if (userCred.user) {
         const userRef = doc(db, 'users', userCred.user.uid);
-        try {
-          await setDoc(
-            userRef,
-            {
-              uid: userCred.user.uid,
-              email: cleanEmail,
-              lastLogin: new Date().toISOString(),
-            },
-            { merge: true }
-          );
-          const userDoc = await getDoc(userRef);
-          if (userDoc.exists() && userDoc.data()?.disabled === true) {
-            await signOut(auth);
-            throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
-          }
-        } catch (checkErr: any) {
-          if (checkErr.message?.includes('disabled by the administrator')) {
-            throw checkErr;
-          }
+        const userDoc = await getDoc(userRef);
+
+        // Compulsory Registration Check: User profile document MUST exist in Firestore
+        if (!userDoc.exists()) {
+          await signOut(auth);
+          throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
         }
+
+        const userData = userDoc.data();
+        if (userData?.disabled === true) {
+          await signOut(auth);
+          throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
+        }
+
+        // Record last login
+        await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
+        setUserProfile(userData as UserProfile);
       }
     } catch (err: any) {
-      if (err.message?.includes('disabled by the administrator')) {
+      if (
+        err.message?.includes('disabled by the administrator') ||
+        err.message?.includes('Registration is COMPULSORY')
+      ) {
         throw err;
       }
 
@@ -204,38 +203,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (code === 'auth/operation-not-allowed' || code === 'auth/auth-domain-config-required' || code === 'auth/network-request-failed') {
         const fallbackUid = 'local_' + btoa(cleanEmail).replace(/=/g, '');
         
-        // Check local storage if disabled
+        // Check if user registered locally first
         const existingLocal = localStorage.getItem('cartgo_local_user');
         if (existingLocal) {
-          const parsed = JSON.parse(existingLocal);
-          if (parsed.disabled) {
-            throw new Error('Your account has been disabled by the administrator. Your data remains safely preserved.');
+          const parsed = JSON.parse(existingLocal) as UserProfile;
+          if (parsed.email.toLowerCase() === cleanEmail) {
+            if (parsed.disabled) {
+              throw new Error('Your account has been disabled by the administrator.');
+            }
+            setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: parsed.displayName });
+            setUserProfile(parsed);
+            return;
           }
         }
 
-        const fallbackProf: UserProfile = {
-          uid: fallbackUid,
-          email: cleanEmail,
-          displayName: cleanEmail.split('@')[0],
-          role: 'buyer',
-          createdAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString(),
-          disabled: false,
-        };
-        localStorage.setItem('cartgo_local_user', JSON.stringify(fallbackProf));
-        setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: fallbackProf.displayName });
-        setUserProfile(fallbackProf);
-
+        // Check Firestore for fallback UID doc
         try {
-          await setDoc(doc(db, 'users', fallbackUid), fallbackProf, { merge: true });
+          const userDoc = await getDoc(doc(db, 'users', fallbackUid));
+          if (userDoc.exists()) {
+            const data = userDoc.data() as UserProfile;
+            if (data.disabled) {
+              throw new Error('Your account has been disabled by the administrator.');
+            }
+            setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: data.displayName });
+            setUserProfile(data);
+            return;
+          }
         } catch (e) {
-          console.warn('Could not save fallback user doc to Firestore:', e);
+          console.warn('Firestore fallback check error:', e);
         }
-        return;
+
+        // If not registered locally or in Firestore, REJECT LOGIN!
+        throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
       }
 
       if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-        throw new Error('No account found with this email or invalid password. New users MUST click "Register Account" first to create an account before logging in.');
+        throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
       } else if (code === 'auth/invalid-email') {
         throw new Error('Please enter a valid email address.');
       } else if (code === 'auth/too-many-requests') {
@@ -255,6 +258,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userRef);
 
+        if (!userDoc.exists() && !isAdminUser) {
+          // Sign out immediately because user has not registered first
+          await signOut(auth);
+          throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
+        }
+
         let prof: UserProfile;
         if (userDoc.exists()) {
           prof = userDoc.data() as UserProfile;
@@ -267,8 +276,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           prof = {
             uid: user.uid,
             email: user.email || '',
-            displayName: isAdminUser ? 'Super Admin' : (user.displayName || user.email?.split('@')[0] || 'Cart Go User'),
-            role: isAdminUser ? 'admin' : preferredRole,
+            displayName: 'Super Admin',
+            role: 'admin',
             createdAt: new Date().toISOString(),
             lastLogin: new Date().toISOString(),
             disabled: false,
@@ -280,8 +289,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.error('Google Auth login error:', err);
-      if (err.message?.includes('disabled by the administrator')) throw err;
-      throw new Error(err.message || 'Google Authentication failed. Please try email login.');
+      if (
+        err.message?.includes('disabled by the administrator') ||
+        err.message?.includes('Registration is COMPULSORY')
+      ) {
+        throw err;
+      }
+      throw new Error(err.message || 'Google Authentication failed. Please try registering an account first.');
     }
   };
 

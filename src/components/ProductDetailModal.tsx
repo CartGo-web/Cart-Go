@@ -109,6 +109,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     try {
       await addDoc(collection(db, 'reviews'), {
         productId: product.id,
+        sellerId: product.sellerId,
+        sellerName: product.sellerName,
         buyerId: currentUser.uid,
         buyerName: userProfile?.displayName || 'Verified Buyer',
         rating: newRating,

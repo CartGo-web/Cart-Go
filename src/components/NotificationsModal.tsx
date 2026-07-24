@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bell, ShieldCheck, Calendar, Check, Send, Sparkles } from 'lucide-react';
+import { X, Bell, ShieldCheck, Calendar, Check, Send, Sparkles, Trash2, CheckCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SellerNotification } from '../types';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 interface NotificationsModalProps {
@@ -14,6 +14,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
   const { currentUser, userProfile } = useAuth();
   const [notifications, setNotifications] = useState<SellerNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !currentUser) return;
@@ -53,6 +54,34 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
     return () => unsub();
   }, [isOpen, currentUser, userProfile]);
 
+  const handleClearSingleNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await deleteDoc(doc(db, 'notifications', id));
+    } catch (err) {
+      console.warn('Could not delete notification from Firestore, removing locally:', err);
+    }
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const handleClearAllNotifications = async () => {
+    if (notifications.length === 0) return;
+    if (!window.confirm('Are you sure you want to clear all admin notifications?')) return;
+
+    setClearing(true);
+    const toDelete = [...notifications];
+    setNotifications([]);
+
+    for (const notif of toDelete) {
+      try {
+        await deleteDoc(doc(db, 'notifications', notif.id));
+      } catch (e) {
+        console.warn('Notification clear error:', e);
+      }
+    }
+    setClearing(false);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -84,6 +113,23 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
           </button>
         </div>
 
+        {/* Clear All Action Bar */}
+        {notifications.length > 0 && (
+          <div className="px-6 py-2.5 bg-orange-50/80 border-b border-orange-100 flex items-center justify-between text-xs">
+            <span className="text-slate-600 font-medium">
+              You have <strong className="text-slate-900">{notifications.length}</strong> notification{notifications.length > 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={handleClearAllNotifications}
+              disabled={clearing}
+              className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors shadow-2xs text-[11px] disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{clearing ? 'Clearing...' : 'Clear All Notifications'}</span>
+            </button>
+          </div>
+        )}
+
         {/* List Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
           {loading ? (
@@ -94,11 +140,11 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
           ) : notifications.length === 0 ? (
             <div className="text-center py-12 px-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
               <div className="w-12 h-12 bg-orange-100 text-[#FF5500] rounded-full flex items-center justify-center mx-auto">
-                <Bell className="w-6 h-6" />
+                <CheckCheck className="w-6 h-6 text-emerald-600" />
               </div>
-              <h3 className="text-sm font-bold text-slate-800">No Notifications Yet</h3>
+              <h3 className="text-sm font-bold text-slate-800">Notifications Cleared!</h3>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                You will receive private messages, system updates, and account status notifications here from the Super Admin.
+                Your notifications box is empty. New announcements from Cart Go Super Admin will appear here.
               </p>
             </div>
           ) : (
@@ -107,7 +153,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
               return (
                 <div
                   key={notif.id}
-                  className={`p-4 rounded-xl border transition-all space-y-2 relative ${
+                  className={`p-4 rounded-xl border transition-all space-y-2 relative group ${
                     isDirect
                       ? 'bg-gradient-to-r from-orange-50/80 to-amber-50/50 border-orange-200 shadow-xs'
                       : 'bg-white border-slate-200 hover:border-slate-300'
@@ -118,15 +164,24 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
                       <span className="w-2 h-2 rounded-full bg-[#FF5500] shrink-0"></span>
                       <h4 className="text-xs font-extrabold text-slate-900">{notif.title}</h4>
                     </div>
-                    {isDirect ? (
-                      <span className="shrink-0 px-2.5 py-0.5 bg-[#FF5500] text-white text-[10px] font-bold rounded-full shadow-2xs">
-                        🔒 Direct Message to You
-                      </span>
-                    ) : (
-                      <span className="shrink-0 px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
-                        📢 Broadcast
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isDirect ? (
+                        <span className="px-2.5 py-0.5 bg-[#FF5500] text-white text-[10px] font-bold rounded-full shadow-2xs">
+                          🔒 Direct Message
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
+                          📢 Broadcast
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => handleClearSingleNotification(notif.id, e)}
+                        title="Clear Notification"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap pl-4">
@@ -152,15 +207,25 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 text-center text-xs text-slate-500 flex items-center gap-3">
+          {notifications.length > 0 && (
+            <button
+              onClick={handleClearAllNotifications}
+              disabled={clearing}
+              className="flex-1 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl transition-colors shadow-2xs disabled:opacity-50"
+            >
+              Clear All ({notifications.length})
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors shadow-xs"
+            className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors shadow-xs"
           >
-            Close Notifications
+            Close
           </button>
         </div>
       </div>
     </div>
   );
 };
+

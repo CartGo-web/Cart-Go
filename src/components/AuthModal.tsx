@@ -11,7 +11,7 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { login, signup, loginWithGoogle } = useAuth();
-  const [isLoginTab, setIsLoginTab] = useState(true);
+  const [isLoginTab, setIsLoginTab] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -90,17 +90,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <CartGoLogo size="lg" variant="dark" showTagline={false} />
           </div>
           <h2 className="text-xl font-extrabold">Welcome to Cart Go</h2>
-          <p className="text-xs text-orange-100 mt-1">
-            {isLoginTab ? 'Login to manage orders and sell products' : 'Create your buyer or seller account'}
+          <p className="text-xs text-orange-100 mt-1 font-medium">
+            {isLoginTab
+              ? 'Login to your registered Cart Go account'
+              : 'Register your Cart Go buyer or seller account'}
           </p>
         </div>
 
         {/* Scrollable Form Body */}
         <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-          {/* Info Banner for New Users */}
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-900 text-[11px] rounded-xl flex items-center gap-2 font-semibold shadow-xs">
+          {/* Compulsory Registration Warning Banner */}
+          <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-[#FF5500]/40 text-amber-950 text-[11px] rounded-xl flex items-center gap-2.5 font-bold shadow-xs">
             <Sparkles className="w-4 h-4 text-[#FF5500] shrink-0" />
-            <span>New to Cart Go? First-time users must click <strong>"Register Account"</strong> to create an account before logging in.</span>
+            <span>
+              <strong>COMPULSORY RULE:</strong> You MUST click <u>"1. Register Account"</u> first to register your account before logging in. Unregistered logins are blocked.
+            </span>
           </div>
 
           {/* Tabs */}

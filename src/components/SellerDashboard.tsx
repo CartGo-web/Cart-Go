@@ -150,24 +150,116 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
+  const compressImageFile = (file: File, maxSide = 800, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve((e.target?.result as string) || '');
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxSide) {
+              height = Math.round((height * maxSide) / width);
+              width = maxSide;
+            }
+          } else {
+            if (height > maxSide) {
+              width = Math.round((width * maxSide) / height);
+              height = maxSide;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressed);
+          } else {
+            resolve((event.target?.result as string) || '');
+          }
+        };
+        img.onerror = () => resolve((event.target?.result as string) || '');
+        img.src = (event.target?.result as string) || '';
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const ensureCompressedDataUrl = (dataUrl: string, maxDimension = 800, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+        resolve(dataUrl);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          resolve(compressed);
+        } else {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    (Array.from(files) as File[]).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        if (result) {
+    for (const file of Array.from(files) as File[]) {
+      try {
+        const compressedBase64 = await compressImageFile(file, 800, 0.7);
+        if (compressedBase64) {
           if (isGallery) {
-            setAdditionalImages((prev) => [...prev, result]);
+            setAdditionalImages((prev) => [...prev, compressedBase64]);
           } else {
-            setImageUrl(result);
+            setImageUrl(compressedBase64);
           }
         }
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.warn('Image upload compression error:', err);
+      }
+    }
     e.target.value = '';
   };
 
@@ -247,12 +339,31 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       const parsedStock = parseInt(stock, 10) || 0;
       const parsedOriginal = originalPrice ? parseFloat(originalPrice) : null;
 
+      // Compress main image if it's a large data URL
+      let finalMainImage = imageUrl;
+      if (finalMainImage && finalMainImage.startsWith('data:image/')) {
+        finalMainImage = await ensureCompressedDataUrl(finalMainImage, 800, 0.7);
+      }
+
+      // Compress additional gallery images
+      let finalGallery: string[] = [];
+      if (additionalImages && additionalImages.length > 0) {
+        for (const imgStr of additionalImages) {
+          if (imgStr.startsWith('data:image/')) {
+            const compressed = await ensureCompressedDataUrl(imgStr, 800, 0.7);
+            finalGallery.push(compressed);
+          } else {
+            finalGallery.push(imgStr);
+          }
+        }
+      }
+
       const newProductPayload: Record<string, any> = {
         title,
         description,
         price: parsedPrice,
         category,
-        imageUrl,
+        imageUrl: finalMainImage,
         stock: parsedStock,
         sellerId: currentUser.uid,
         sellerName: userProfile?.displayName || 'Cart Go Seller',
@@ -268,8 +379,25 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         newProductPayload.originalPrice = parsedOriginal;
       }
 
-      if (additionalImages && additionalImages.length > 0) {
-        newProductPayload.additionalImages = additionalImages;
+      if (finalGallery.length > 0) {
+        newProductPayload.additionalImages = finalGallery;
+      }
+
+      // Check estimated size
+      let payloadSize = JSON.stringify(newProductPayload).length;
+      if (payloadSize > 800000) {
+        // Apply aggressive compression if still over 800KB
+        finalMainImage = await ensureCompressedDataUrl(finalMainImage, 600, 0.5);
+        finalGallery = await Promise.all(finalGallery.map((g) => ensureCompressedDataUrl(g, 600, 0.5)));
+        newProductPayload.imageUrl = finalMainImage;
+        if (finalGallery.length > 0) {
+          newProductPayload.additionalImages = finalGallery;
+        }
+        payloadSize = JSON.stringify(newProductPayload).length;
+      }
+
+      if (payloadSize >= 1000000) {
+        throw new Error('Product payload with attached images is too large. Please reduce the number or resolution of images.');
       }
 
       const docRef = await addDoc(collection(db, 'products'), newProductPayload);

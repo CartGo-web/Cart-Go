@@ -78,7 +78,9 @@ export interface Order {
 
 export interface Review {
   id: string;
-  productId: string;
+  productId?: string;
+  sellerId?: string;
+  sellerName?: string;
   buyerId: string;
   buyerName: string;
   rating: number;
