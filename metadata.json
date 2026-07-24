@@ -1,0 +1,8 @@
+{
+  "name": " Cart Go",
+  "description": "E-commerce marketplace platform for buying and selling products with user authentication and database support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

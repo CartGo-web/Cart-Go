@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "Registered user accounts",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "products": {
+      "title": "Products",
+      "description": "Marketplace products",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "stock": { "type": "number" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "salesCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "price", "sellerId", "category"]
+    },
+    "orders": {
+      "title": "Orders",
+      "description": "Customer purchase orders",
+      "type": "object",
+      "properties": {
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "buyerEmail": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "shippingAddress": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["buyerId", "items", "totalAmount"]
+    },
+    "reviews": {
+      "title": "Reviews",
+      "description": "Product ratings and reviews",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["productId", "buyerId", "rating"]
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "User notification messages",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "title", "message"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/users" },
+      "description": "User profiles collection"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/products" },
+      "description": "Marketplace products collection"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/orders" },
+      "description": "Customer orders collection"
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/reviews" },
+      "description": "Product reviews collection"
+    },
+    "/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/notifications" },
+      "description": "User notifications collection"
+    }
+  }
+}
