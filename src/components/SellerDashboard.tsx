@@ -336,17 +336,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         await updateUserProfile({ phone: contactPhone.trim() });
       }
 
-      if (!imageUrl || !imageUrl.trim()) {
-        throw new Error('Main Product Picture is compulsory! Please upload a photo from your computer/mobile or enter an image URL.');
-      }
-
-      const parsedPrice = parseFloat(price) || 0;
-      const parsedStock = parseInt(stock, 10) || 0;
-      const parsedOriginal = originalPrice ? parseFloat(originalPrice) : null;
-
-      // Compress main image if it's a large data URL
-      let finalMainImage = imageUrl;
-      if (finalMainImage && finalMainImage.startsWith('data:image/')) {
+      // Default fallback picture if seller does not provide an image URL or upload
+      let finalMainImage = imageUrl ? imageUrl.trim() : '';
+      if (!finalMainImage) {
+        finalMainImage = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+      } else if (finalMainImage.startsWith('data:image/')) {
         finalMainImage = await ensureCompressedDataUrl(finalMainImage, 800, 0.7);
       }
 
@@ -367,6 +361,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       finalGallery = finalGallery.filter(
         (img) => img && !PRESET_IMAGES.includes(img) && img !== finalMainImage
       );
+
+      const parsedPrice = parseFloat(price) || 0;
+      const parsedStock = parseInt(stock, 10) || 0;
+      const parsedOriginal = originalPrice ? parseFloat(originalPrice) : null;
 
       const newProductPayload: Record<string, any> = {
         title,
@@ -1056,11 +1054,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 {/* Image URL fallback */}
                 <div>
                   <span className="block text-[11px] font-semibold text-slate-500 mb-1">
-                    Or paste Image URL directly:
+                    (Optional) Paste Image URL directly:
                   </span>
                   <input
                     type="url"
-                    placeholder="https://example.com/my-product-photo.jpg"
+                    placeholder="https://example.com/my-product-photo.jpg (optional)"
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#F57224]"
