@@ -114,7 +114,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const applyCoupon = (code: string) => {
     const formatted = code.trim().toUpperCase();
-    if (formatted === 'CARTGO20' || formatted === 'CARTGO10' || formatted === 'WELCOME50' || formatted === 'DARAZ20') {
+    if (formatted === 'CARTGO20' || formatted === 'CARTGO10' || formatted === 'WELCOME50') {
       setAppliedCoupon(formatted);
       return true;
     }
@@ -128,7 +128,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
 
   let discountAmount = 0;
-  if (appliedCoupon === 'CARTGO20' || appliedCoupon === 'DARAZ20') {
+  if (appliedCoupon === 'CARTGO20') {
     discountAmount = subtotal * 0.2;
   } else if (appliedCoupon === 'CARTGO10') {
     discountAmount = subtotal * 0.1;

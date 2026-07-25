@@ -484,8 +484,6 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       // Clear local storage
       localStorage.removeItem('cartgo_cart_v1');
       localStorage.removeItem('cartgo_wishlist_v1');
-      localStorage.removeItem('daraz_cart_v1');
-      localStorage.removeItem('daraz_wishlist_v1');
 
       setMyProducts([]);
       setSellerOrders([]);

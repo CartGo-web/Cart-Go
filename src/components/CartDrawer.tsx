@@ -47,7 +47,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     setCouponError(null);
     const success = applyCoupon(couponInput);
     if (!success) {
-      setCouponError('Invalid voucher code. Try DARAZ20 or WELCOME50');
+      setCouponError('Invalid voucher code. Try CARTGO20 or WELCOME50');
     } else {
       setCouponInput('');
     }
@@ -184,7 +184,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         <Tag className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Voucher Code (e.g. DARAZ20)"
+                          placeholder="Voucher Code (e.g. CARTGO20)"
                           value={couponInput}
                           onChange={(e) => setCouponInput(e.target.value)}
                           className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#F57224]"
