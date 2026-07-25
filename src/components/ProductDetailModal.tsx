@@ -71,7 +71,22 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   if (!product) return null;
 
   const inWishlist = isInWishlist(product.id);
-  const images = [product.imageUrl, ...(product.additionalImages || [])];
+
+  // Sample reference URLs to filter out so buyers only see genuine uploaded seller pictures
+  const SAMPLE_REFERENCE_URLS = new Set([
+    'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1517668808822-9e428824603b?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=800&q=80',
+  ]);
+
+  const cleanAdditionalImages = (product.additionalImages || []).filter(
+    (img) => img && !SAMPLE_REFERENCE_URLS.has(img) && img !== product.imageUrl
+  );
+
+  const images = Array.from(new Set([product.imageUrl, ...cleanAdditionalImages])).filter(Boolean);
 
   const handleShareProduct = async () => {
     const url = getShareableProductUrl(product.id);
@@ -128,10 +143,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden relative my-8">
-        {/* Top Navigation Bar in Modal */}
-        <div className="flex items-center justify-between p-4 sm:px-6 border-b border-slate-100 bg-slate-50/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden relative my-auto max-h-[92vh] flex flex-col">
+        {/* Top Navigation Bar in Modal (Fixed Header) */}
+        <div className="flex items-center justify-between p-3.5 sm:px-6 border-b border-slate-100 bg-slate-50/90 backdrop-blur-xs shrink-0 z-10">
           <button
             onClick={onClose}
             className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-[#FF5500] bg-white hover:bg-orange-50 border border-slate-200 hover:border-orange-200 rounded-xl transition-all shadow-2xs"
@@ -139,6 +154,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Marketplace</span>
           </button>
+
+          <span className="font-bold text-slate-800 text-xs truncate max-w-[180px] sm:max-w-xs">
+            {product.title}
+          </span>
 
           <button
             onClick={onClose}
@@ -149,7 +168,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 sm:p-8">
+        {/* Scrollable Content Container */}
+        <div className="flex-1 overflow-y-auto scroll-smooth divide-y divide-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 sm:p-8">
           {/* Left Column: Gallery */}
           <div className="space-y-4">
             <div className="aspect-square w-full rounded-xl bg-slate-50 overflow-hidden border border-slate-100 relative">
@@ -441,6 +462,37 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </div>
+
+        {/* Sticky Bottom Bar for Instant Purchase Access */}
+        <div className="shrink-0 bg-white border-t border-slate-200 p-3 sm:px-6 flex items-center justify-between gap-3 shadow-lg z-20">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 hidden sm:inline">Total:</span>
+            <span className="text-base sm:text-lg font-black text-[#FF5500]">
+              {formatPKR(product.price * quantity)}
+            </span>
+            {quantity > 1 && (
+              <span className="text-[10px] text-slate-400">({quantity} items)</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
+            <button
+              onClick={() => addToCart(product, quantity)}
+              className="py-2.5 px-3 sm:px-5 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-orange-200"
+            >
+              <ShoppingBag className="w-4 h-4 shrink-0" />
+              <span className="truncate">Add to Cart</span>
+            </button>
+
+            <button
+              onClick={() => onBuyNow(product, quantity)}
+              className="py-2.5 px-4 sm:px-6 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0"
+            >
+              <span>Buy Now</span>
+            </button>
           </div>
         </div>
       </div>

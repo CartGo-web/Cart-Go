@@ -77,7 +77,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [price, setPrice] = useState('');
   const [originalPrice, setOriginalPrice] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].id);
-  const [imageUrl, setImageUrl] = useState(PRESET_IMAGES[0]);
+  const [imageUrl, setImageUrl] = useState('');
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [stock, setStock] = useState('20');
   const [isFlashSale, setIsFlashSale] = useState(false);
@@ -336,6 +336,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         await updateUserProfile({ phone: contactPhone.trim() });
       }
 
+      if (!imageUrl || !imageUrl.trim()) {
+        throw new Error('Main Product Picture is compulsory! Please upload a photo from your computer/mobile or enter an image URL.');
+      }
+
       const parsedPrice = parseFloat(price) || 0;
       const parsedStock = parseInt(stock, 10) || 0;
       const parsedOriginal = originalPrice ? parseFloat(originalPrice) : null;
@@ -346,7 +350,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         finalMainImage = await ensureCompressedDataUrl(finalMainImage, 800, 0.7);
       }
 
-      // Compress additional gallery images
+      // Compress additional gallery images and filter out reference sample photos
       let finalGallery: string[] = [];
       if (additionalImages && additionalImages.length > 0) {
         for (const imgStr of additionalImages) {
@@ -358,6 +362,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
           }
         }
       }
+
+      // Strip out any reference sample preset images so only genuine seller photos are saved
+      finalGallery = finalGallery.filter(
+        (img) => img && !PRESET_IMAGES.includes(img) && img !== finalMainImage
+      );
 
       const newProductPayload: Record<string, any> = {
         title,
@@ -419,6 +428,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       setDescription('');
       setPrice('');
       setOriginalPrice('');
+      setImageUrl('');
       setAdditionalImages([]);
       setSuccessMsg('Product published successfully & shareable link created!');
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -1050,31 +1060,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                   </span>
                   <input
                     type="url"
-                    required
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder="https://example.com/my-product-photo.jpg"
                     value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
                     className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#F57224]"
                   />
-                </div>
-
-                {/* Preset Options */}
-                <div>
-                  <p className="text-[11px] text-slate-500 mb-1">Or choose a sample high-res photo:</p>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {PRESET_IMAGES.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setImageUrl(img)}
-                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 ${
-                          imageUrl === img ? 'border-[#F57224]' : 'border-slate-200'
-                        }`}
-                      >
-                        <img src={img} alt="Preset" className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
 

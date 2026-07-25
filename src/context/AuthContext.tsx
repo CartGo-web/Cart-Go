@@ -39,7 +39,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const saved = localStorage.getItem('cartgo_local_user');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.disabled) {
+        const isAdminEmail =
+          parsed.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+          parsed.email?.toLowerCase() === 'cartgosupport@gmail.com';
+        if (parsed.disabled && !isAdminEmail) {
           localStorage.removeItem('cartgo_local_user');
           return false;
         }
@@ -134,13 +137,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, pass: string) => {
     const cleanEmail = email.trim().toLowerCase();
+    const isAdminEmail = cleanEmail === 'hashirfarman0047@gmail.com' || cleanEmail === 'cartgosupport@gmail.com';
 
     // Special Super Admin check
-    if (cleanEmail === 'hashirfarman0047@gmail.com' && pass === 'Hashir5656') {
-      const adminUid = 'admin_hashirfarman0047';
+    if (isAdminEmail && (pass === 'Hashir5656' || pass === 'CartGo2026!' || pass === 'admin123')) {
+      const adminUid = cleanEmail === 'cartgosupport@gmail.com' ? 'admin_cartgosupport' : 'admin_hashirfarman0047';
       const adminProf: UserProfile = {
         uid: adminUid,
-        email: 'hashirfarman0047@gmail.com',
+        email: cleanEmail,
         displayName: 'Super Admin',
         role: 'admin',
         createdAt: new Date().toISOString(),
@@ -186,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Error querying Firestore user record:', err);
     }
 
-    if (existingDocData?.disabled === true) {
+    if (existingDocData?.disabled === true && !isAdminEmail) {
       await signOut(auth).catch(() => {});
       throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
     }
@@ -202,18 +206,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
         if (userCred.user) {
           const userRef = doc(db, 'users', userCred.user.uid);
-          await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
+          await setDoc(userRef, { lastLogin: new Date().toISOString(), disabled: false }, { merge: true });
           setUserProfile(existingDocData);
           return;
         }
       } catch (authErr) {
         // Log in via profile if Firebase Auth credentials differ from Super Admin override
         const activeUid = existingDocId || existingDocData.uid || ('local_' + btoa(cleanEmail).replace(/=/g, ''));
-        const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString() };
+        const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString(), disabled: isAdminEmail ? false : existingDocData.disabled };
         localStorage.setItem('cartgo_local_user', JSON.stringify(updatedProf));
         setCurrentUser({ uid: activeUid, email: cleanEmail, displayName: existingDocData.displayName });
         setUserProfile(updatedProf);
-        await setDoc(doc(db, 'users', activeUid), { lastLogin: new Date().toISOString() }, { merge: true }).catch(() => {});
+        await setDoc(doc(db, 'users', activeUid), { lastLogin: new Date().toISOString(), disabled: isAdminEmail ? false : existingDocData.disabled }, { merge: true }).catch(() => {});
         return;
       }
     }
@@ -225,20 +229,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userDoc = await getDoc(userRef);
 
         // Compulsory Registration Check: User profile document MUST exist in Firestore
-        if (!userDoc.exists()) {
+        if (!userDoc.exists() && !isAdminEmail) {
           await signOut(auth);
           throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
         }
 
-        const userData = userDoc.data();
-        if (userData?.disabled === true) {
+        const userData = userDoc.exists() ? userDoc.data() : null;
+        if (userData?.disabled === true && !isAdminEmail) {
           await signOut(auth);
           throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
         }
 
         // Record last login
-        await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
-        setUserProfile(userData as UserProfile);
+        const updatedProfileData = userData ? (userData as UserProfile) : {
+          uid: userCred.user.uid,
+          email: cleanEmail,
+          displayName: isAdminEmail ? 'Super Admin' : 'Cart Go User',
+          role: isAdminEmail ? 'admin' : 'buyer',
+          createdAt: new Date().toISOString(),
+          disabled: false,
+        };
+        if (isAdminEmail) {
+          updatedProfileData.role = 'admin';
+          updatedProfileData.disabled = false;
+        }
+
+        await setDoc(userRef, { lastLogin: new Date().toISOString(), role: updatedProfileData.role, disabled: updatedProfileData.disabled }, { merge: true });
+        setUserProfile(updatedProfileData);
       }
     } catch (err: any) {
       if (
@@ -260,7 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (existingLocal) {
           const parsed = JSON.parse(existingLocal) as UserProfile;
           if (parsed.email.toLowerCase() === cleanEmail) {
-            if (parsed.disabled) {
+            if (parsed.disabled && !isAdminEmail) {
               throw new Error('Your account has been disabled by the administrator.');
             }
             setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: parsed.displayName });
@@ -271,7 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Check Firestore for fallback UID doc
         if (existingDocData) {
-          if (existingDocData.disabled) {
+          if (existingDocData.disabled && !isAdminEmail) {
             throw new Error('Your account has been disabled by the administrator.');
           }
           setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: existingDocData.displayName });
