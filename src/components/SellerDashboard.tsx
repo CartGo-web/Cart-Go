@@ -51,6 +51,7 @@ import {
 interface SellerDashboardProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenAdmin?: () => void;
 }
 
 const PRESET_IMAGES = [
@@ -62,8 +63,8 @@ const PRESET_IMAGES = [
   'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=800&q=80',
 ];
 
-export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose }) => {
-  const { currentUser, userProfile, updateUserProfile } = useAuth();
+export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose, onOpenAdmin }) => {
+  const { currentUser, userProfile, isAdmin, updateUserProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'add' | 'products' | 'orders' | 'notifications' | 'about'>('add');
 
   // Notifications State
@@ -518,7 +519,20 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAdmin();
+                }}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md transition-all border border-amber-300"
+                title="Open Super Admin Console"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-slate-900" />
+                <span>Super Admin Console</span>
+              </button>
+            )}
             {currentUser && (
               <button
                 onClick={handleShareMyStore}

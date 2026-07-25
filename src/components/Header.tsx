@@ -73,6 +73,19 @@ export const Header: React.FC<HeaderProps> = ({
                 3% sale commission
               </span>
             </button>
+            {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
+              <>
+                <span className="text-slate-600 hidden sm:inline">|</span>
+                <button
+                  onClick={onOpenAdmin}
+                  className="hover:bg-amber-500/30 font-extrabold flex items-center gap-1.5 text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-md border border-amber-400/40 transition-colors shadow-xs"
+                  title="Open Cart Go Super Admin Console"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                  <span>Super Admin Console</span>
+                </button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <a
@@ -182,6 +195,18 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <span className="hidden lg:inline text-xs font-semibold">Cart</span>
             </button>
+
+            {/* Super Admin Console direct button for Super Admin */}
+            {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
+              <button
+                onClick={onOpenAdmin}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-extrabold rounded-lg shadow-sm transition-all border border-amber-300 hover:scale-105"
+                title="Open Cart Go Super Admin Console"
+              >
+                <Sparkles className="w-4 h-4 fill-slate-900" />
+                <span>Super Admin Console</span>
+              </button>
+            )}
 
             {/* User Account */}
             {currentUser ? (
@@ -332,6 +357,80 @@ export const Header: React.FC<HeaderProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Mobile Menu Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden bg-slate-900 border-b border-slate-800 text-white p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onOpenAdmin();
+              }}
+              className="w-full text-left px-4 py-3 bg-amber-500 text-slate-900 rounded-xl font-extrabold text-xs flex items-center justify-between shadow-md"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 fill-slate-900" />
+                <span>🛡️ Super Admin Console</span>
+              </div>
+              <span className="text-[10px] bg-slate-900 text-amber-300 px-2 py-0.5 rounded font-mono">ADMIN</span>
+            </button>
+          )}
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onOpenSeller();
+              }}
+              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-orange-400 flex items-center gap-2 border border-slate-700"
+            >
+              <Store className="w-4 h-4" />
+              <span>Seller Dashboard</span>
+            </button>
+
+            {currentUser ? (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenOrders();
+                }}
+                className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-slate-200 flex items-center gap-2 border border-slate-700"
+              >
+                <PackageCheck className="w-4 h-4 text-orange-400" />
+                <span>My Orders</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenAuth();
+                }}
+                className="px-3 py-2.5 bg-[#FF5500] hover:bg-[#E04400] text-white rounded-xl font-bold flex items-center gap-2"
+              >
+                <UserIcon className="w-4 h-4" />
+                <span>Login / Register</span>
+              </button>
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>Support: <strong className="text-orange-400">cartgosupport@gmail.com</strong></span>
+            {currentUser && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  logout();
+                }}
+                className="text-rose-400 font-bold hover:underline flex items-center gap-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Logout</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 };

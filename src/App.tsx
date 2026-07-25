@@ -712,7 +712,7 @@ function MarketplaceMain() {
               <CartGoLogo size="sm" variant="dark" />
             </div>
             <p className="text-slate-400 leading-relaxed text-[11px]">
-              The fast & reliable online marketplace connecting buyers and sellers everywhere. Buy tech, fashion, groceries, and home appliances with 100% verified authenticity and safe Cash on Delivery.
+              The fast & reliable online marketplace connecting buyers and sellers everywhere. Buy tech, fashion, health, and home appliances with 100% verified authenticity and safe Cash on Delivery.
             </p>
           </div>
 
@@ -792,6 +792,7 @@ function MarketplaceMain() {
       <SellerDashboard
         isOpen={sellerDashboardOpen}
         onClose={() => setSellerDashboardOpen(false)}
+        onOpenAdmin={() => setAdminDashboardOpen(true)}
       />
       <AdminDashboard
         isOpen={adminDashboardOpen}

@@ -30,13 +30,6 @@ export const CATEGORIES: Category[] = [
     imageUrl: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80',
   },
   {
-    id: 'groceries',
-    name: 'Supermarket & Fresh',
-    iconName: 'ShoppingBag',
-    color: 'bg-amber-500',
-    imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80',
-  },
-  {
     id: 'sports',
     name: 'Sports & Outdoors',
     iconName: 'Activity',

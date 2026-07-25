@@ -11,6 +11,8 @@ export interface UserProfile {
   createdAt?: string;
   lastLogin?: string;
   disabled?: boolean;
+  customPassword?: string;
+  passwordUpdatedAt?: string;
 }
 
 export interface SellerNotification {

@@ -9,13 +9,14 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, query, where, collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 
 interface AuthContextType {
   currentUser: User | { uid: string; email: string | null; displayName: string | null } | null;
   userProfile: UserProfile | null;
+  isAdmin: boolean;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
   loginWithGoogle: (preferredRole?: UserRole) => Promise<void>;
@@ -58,7 +59,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Check if admin email
-        const isAdminUser = user.email?.toLowerCase() === 'hashirfarman0047@gmail.com';
+        const isAdminUser =
+          user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+          user.email?.toLowerCase() === 'cartgosupport@gmail.com';
         setCurrentUser(user);
         localStorage.removeItem('cartgo_local_user');
 
@@ -167,6 +170,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    // Check if user has a custom password set by Super Admin or user profile in Firestore
+    let existingDocData: UserProfile | null = null;
+    let existingDocId: string | null = null;
+
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        const firstDoc = qSnap.docs[0];
+        existingDocId = firstDoc.id;
+        existingDocData = firstDoc.data() as UserProfile;
+      }
+    } catch (err) {
+      console.warn('Error querying Firestore user record:', err);
+    }
+
+    if (existingDocData?.disabled === true) {
+      await signOut(auth).catch(() => {});
+      throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
+    }
+
+    // Check if Super Admin set a custom password override on this account
+    if (existingDocData && existingDocData.customPassword) {
+      if (pass !== existingDocData.customPassword) {
+        throw new Error('Invalid password. If your password was changed by Super Admin, please enter the updated password.');
+      }
+
+      // Password matches Super Admin's override! Log user in cleanly.
+      try {
+        const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        if (userCred.user) {
+          const userRef = doc(db, 'users', userCred.user.uid);
+          await setDoc(userRef, { lastLogin: new Date().toISOString() }, { merge: true });
+          setUserProfile(existingDocData);
+          return;
+        }
+      } catch (authErr) {
+        // Log in via profile if Firebase Auth credentials differ from Super Admin override
+        const activeUid = existingDocId || existingDocData.uid || ('local_' + btoa(cleanEmail).replace(/=/g, ''));
+        const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString() };
+        localStorage.setItem('cartgo_local_user', JSON.stringify(updatedProf));
+        setCurrentUser({ uid: activeUid, email: cleanEmail, displayName: existingDocData.displayName });
+        setUserProfile(updatedProf);
+        await setDoc(doc(db, 'users', activeUid), { lastLogin: new Date().toISOString() }, { merge: true }).catch(() => {});
+        return;
+      }
+    }
+
     try {
       const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
       if (userCred.user) {
@@ -192,7 +243,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       if (
         err.message?.includes('disabled by the administrator') ||
-        err.message?.includes('Registration is COMPULSORY')
+        err.message?.includes('Registration is COMPULSORY') ||
+        err.message?.includes('Invalid password')
       ) {
         throw err;
       }
@@ -201,7 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Firebase login warning:', code, err.message);
 
       if (code === 'auth/operation-not-allowed' || code === 'auth/auth-domain-config-required' || code === 'auth/network-request-failed') {
-        const fallbackUid = 'local_' + btoa(cleanEmail).replace(/=/g, '');
+        const fallbackUid = existingDocId || ('local_' + btoa(cleanEmail).replace(/=/g, ''));
         
         // Check if user registered locally first
         const existingLocal = localStorage.getItem('cartgo_local_user');
@@ -218,19 +270,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Check Firestore for fallback UID doc
-        try {
-          const userDoc = await getDoc(doc(db, 'users', fallbackUid));
-          if (userDoc.exists()) {
-            const data = userDoc.data() as UserProfile;
-            if (data.disabled) {
-              throw new Error('Your account has been disabled by the administrator.');
-            }
-            setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: data.displayName });
-            setUserProfile(data);
-            return;
+        if (existingDocData) {
+          if (existingDocData.disabled) {
+            throw new Error('Your account has been disabled by the administrator.');
           }
-        } catch (e) {
-          console.warn('Firestore fallback check error:', e);
+          setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: existingDocData.displayName });
+          setUserProfile(existingDocData);
+          return;
         }
 
         // If not registered locally or in Firestore, REJECT LOGIN!
@@ -254,7 +300,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await signInWithPopup(auth, provider);
       const user = res.user;
       if (user) {
-        const isAdminUser = user.email?.toLowerCase() === 'hashirfarman0047@gmail.com';
+        const isAdminUser =
+          user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+          user.email?.toLowerCase() === 'cartgosupport@gmail.com';
         const userRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userRef);
 
@@ -395,11 +443,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserProfile(updated);
   };
 
+  const isAdmin =
+    userProfile?.role === 'admin' ||
+    currentUser?.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+    currentUser?.email?.toLowerCase() === 'cartgosupport@gmail.com';
+
   return (
     <AuthContext.Provider
       value={{
         currentUser,
         userProfile,
+        isAdmin,
         loading,
         login,
         loginWithGoogle,

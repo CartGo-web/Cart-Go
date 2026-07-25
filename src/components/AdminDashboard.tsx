@@ -19,6 +19,10 @@ import {
   Search,
   AlertTriangle,
   Trash2,
+  Key,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   collection,
@@ -28,11 +32,14 @@ import {
   addDoc,
   deleteDoc,
   query,
+  where,
   orderBy,
   setDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
 import { UserProfile, Order, SellerNotification, Product } from '../types';
 
 interface AdminDashboardProps {
@@ -41,8 +48,9 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
+  const { isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'sellers' | 'analytics' | 'notifications'>('sellers');
-  
+
   // Data States
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [ordersList, setOrdersList] = useState<Order[]>([]);
@@ -64,6 +72,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [showSellersOnly, setShowSellersOnly] = useState(false);
   const [resettingData, setResettingData] = useState(false);
   const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+
+  // Action Confirmation Modals State (replaces window.confirm)
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [showDeleteAllUsersModal, setShowDeleteAllUsersModal] = useState(false);
+  const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
+
+  // Change Password Modal State for Super Admin
+  const [selectedUserForPasswordChange, setSelectedUserForPasswordChange] = useState<UserProfile | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [showPasswordText, setShowPasswordText] = useState(false);
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState<string | null>(null);
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+
+  const handleOpenPasswordModal = (user: UserProfile) => {
+    setSelectedUserForPasswordChange(user);
+    setNewPasswordInput('');
+    setShowPasswordText(false);
+    setPasswordChangeSuccess(null);
+    setPasswordChangeError(null);
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserForPasswordChange) return;
+
+    if (!newPasswordInput || newPasswordInput.length < 6) {
+      setPasswordChangeError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    setPasswordChangeLoading(true);
+    setPasswordChangeError(null);
+    setPasswordChangeSuccess(null);
+
+    try {
+      // 1. Update Firestore user document with customPassword
+      const userRef = doc(db, 'users', selectedUserForPasswordChange.uid);
+      await updateDoc(userRef, {
+        customPassword: newPasswordInput,
+        passwordUpdatedAt: new Date().toISOString(),
+      });
+
+      // 2. Try sending Firebase Auth reset email as well if possible
+      try {
+        if (selectedUserForPasswordChange.email) {
+          await sendPasswordResetEmail(auth, selectedUserForPasswordChange.email);
+        }
+      } catch (authErr) {
+        console.warn('Optional password reset email dispatch notice:', authErr);
+      }
+
+      setPasswordChangeSuccess(
+        `✅ Password for ${selectedUserForPasswordChange.displayName || selectedUserForPasswordChange.email} has been updated to "${newPasswordInput}". The user can now log in immediately with this new password!`
+      );
+      setNewPasswordInput('');
+    } catch (err: any) {
+      console.error('Error updating user password:', err);
+      setPasswordChangeError(err.message || 'Failed to update user password. Please try again.');
+    } finally {
+      setPasswordChangeLoading(false);
+    }
+  };
+
+  const handleSendResetEmailOnly = async () => {
+    if (!selectedUserForPasswordChange?.email) return;
+
+    setPasswordChangeLoading(true);
+    setPasswordChangeError(null);
+    setPasswordChangeSuccess(null);
+
+    try {
+      await sendPasswordResetEmail(auth, selectedUserForPasswordChange.email);
+      setPasswordChangeSuccess(
+        `📧 Password reset email sent directly to ${selectedUserForPasswordChange.email}!`
+      );
+    } catch (err: any) {
+      console.error('Error sending reset email:', err);
+      setPasswordChangeError(err.message || 'Could not send reset email.');
+    } finally {
+      setPasswordChangeLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -164,30 +256,104 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   };
 
   const handleToggleAccountStatus = async (user: UserProfile) => {
+    const isSuperAdmin =
+      user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+      user.email?.toLowerCase() === 'cartgosupport@gmail.com';
+
+    if (isSuperAdmin) {
+      alert('Super Admin accounts cannot be disabled.');
+      return;
+    }
+
     const newStatus = !user.disabled;
     try {
-      // Update local state
+      // Update local state for all matching user profiles
       setUsersList((prev) =>
-        prev.map((u) => (u.uid === user.uid ? { ...u, disabled: newStatus } : u))
+        prev.map((u) =>
+          u.uid === user.uid || (user.email && u.email?.toLowerCase() === user.email.toLowerCase())
+            ? { ...u, disabled: newStatus }
+            : u
+        )
       );
 
-      // Update Firestore doc
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, { disabled: newStatus }, { merge: true });
-    } catch (err) {
+      // 1. Update doc by UID
+      if (user.uid) {
+        await setDoc(doc(db, 'users', user.uid), { disabled: newStatus }, { merge: true });
+      }
+
+      // 2. Also update any duplicate docs matching same email
+      if (user.email) {
+        const cleanEmail = user.email.trim().toLowerCase();
+        const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+        const qSnap = await getDocs(q);
+        for (const docSnap of qSnap.docs) {
+          await setDoc(doc(db, 'users', docSnap.id), { disabled: newStatus }, { merge: true });
+        }
+      }
+
+      setResetSuccess(
+        `✅ Account for ${user.displayName || user.email} has been ${newStatus ? 'DISABLED' : 'ENABLED'}.`
+      );
+      setTimeout(() => setResetSuccess(null), 5000);
+    } catch (err: any) {
       console.error('Failed to update user status:', err);
-      alert('Could not update user account status in database.');
+      alert('Could not update user account status in database: ' + (err.message || 'Error'));
     }
   };
 
-  const handleFactoryResetData = async () => {
-    const confirmMessage =
-      '⚠️ PERMANENT DATABASE RESET WARNING!\n\nAre you sure you want to DELETE ALL DATA on Cart Go?\n\nThis will completely wipe:\n• All registered user and seller accounts (except Super Admin)\n• All listed products & catalog\n• All orders, sales, & revenue data\n• All notification logs\n\nSuper Admin account will NOT be deleted, but all other data will be wiped cleanly.\n\nProceed?';
+  const confirmDeleteUser = async (user: UserProfile) => {
+    const isSuperAdmin =
+      user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+      user.email?.toLowerCase() === 'cartgosupport@gmail.com';
 
-    if (!window.confirm(confirmMessage)) return;
+    if (isSuperAdmin) {
+      alert('Super Admin account is protected and cannot be deleted.');
+      setUserToDelete(null);
+      return;
+    }
 
+    setIsDeletingUser(true);
+    try {
+      // 1. Remove from local list state immediately
+      setUsersList((prev) =>
+        prev.filter(
+          (u) => u.uid !== user.uid && (!user.email || u.email?.toLowerCase() !== user.email.toLowerCase())
+        )
+      );
+
+      // 2. Delete main document by UID
+      if (user.uid) {
+        await deleteDoc(doc(db, 'users', user.uid));
+      }
+
+      // 3. Delete any duplicate docs matching same email or UID
+      if (user.email) {
+        const cleanEmail = user.email.trim().toLowerCase();
+        const userSnap = await getDocs(collection(db, 'users'));
+        for (const docSnap of userSnap.docs) {
+          const data = docSnap.data();
+          if (docSnap.id === user.uid || (data.email && data.email.trim().toLowerCase() === cleanEmail)) {
+            await deleteDoc(doc(db, 'users', docSnap.id));
+          }
+        }
+      }
+
+      setResetSuccess(`✅ User account for ${user.displayName || user.email} has been permanently deleted.`);
+      setUserToDelete(null);
+      setTimeout(() => setResetSuccess(null), 6000);
+    } catch (err: any) {
+      console.error('Error deleting user account:', err);
+      alert('Failed to delete user account: ' + (err.message || 'Unknown error'));
+      await fetchAdminData();
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const executeFactoryReset = async () => {
     setResettingData(true);
     setResetSuccess(null);
+    setShowFactoryResetModal(false);
 
     try {
       // 1. Delete all products
@@ -212,9 +378,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
       const userSnap = await getDocs(collection(db, 'users'));
       for (const d of userSnap.docs) {
         const uData = d.data() as UserProfile;
+        const email = uData.email?.toLowerCase() || '';
         const isSuperAdmin =
           uData.role === 'admin' ||
-          uData.email?.toLowerCase() === 'hashirfarman0047@gmail.com';
+          email === 'hashirfarman0047@gmail.com' ||
+          email === 'cartgosupport@gmail.com';
 
         if (!isSuperAdmin) {
           await deleteDoc(doc(db, 'users', d.id));
@@ -226,7 +394,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
               role: 'admin',
               disabled: false,
               displayName: 'Super Admin',
-              email: uData.email || 'hashirfarman0047@gmail.com',
+              email: uData.email || email || 'cartgosupport@gmail.com',
             },
             { merge: false }
           );
@@ -252,6 +420,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     } catch (err: any) {
       console.error('Error wiping database:', err);
       alert('Error clearing database: ' + (err.message || 'Unknown error'));
+    } finally {
+      setResettingData(false);
+    }
+  };
+
+  const executeDeleteAllUsers = async () => {
+    setResettingData(true);
+    setResetSuccess(null);
+    setShowDeleteAllUsersModal(false);
+
+    try {
+      const userSnap = await getDocs(collection(db, 'users'));
+      let deletedCount = 0;
+
+      for (const d of userSnap.docs) {
+        const uData = d.data() as UserProfile;
+        const email = uData.email?.toLowerCase() || '';
+        const isSuperAdmin =
+          uData.role === 'admin' ||
+          email === 'hashirfarman0047@gmail.com' ||
+          email === 'cartgosupport@gmail.com';
+
+        if (!isSuperAdmin) {
+          await deleteDoc(doc(db, 'users', d.id));
+          deletedCount++;
+        } else {
+          await setDoc(
+            doc(db, 'users', d.id),
+            {
+              role: 'admin',
+              disabled: false,
+              displayName: 'Super Admin',
+              email: uData.email || email || 'cartgosupport@gmail.com',
+            },
+            { merge: false }
+          );
+        }
+      }
+
+      setUsersList((prev) =>
+        prev.filter(
+          (u) =>
+            u.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+            u.email?.toLowerCase() === 'cartgosupport@gmail.com'
+        )
+      );
+
+      setResetSuccess(`✅ Deleted ${deletedCount} user accounts from Firebase. Only Super Admin remains.`);
+      setTimeout(() => setResetSuccess(null), 10000);
+    } catch (err: any) {
+      console.error('Error deleting users:', err);
+      alert('Error deleting user accounts: ' + (err.message || 'Unknown error'));
     } finally {
       setResettingData(false);
     }
@@ -460,7 +680,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleFactoryResetData}
+              onClick={() => setShowDeleteAllUsersModal(true)}
+              disabled={resettingData}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              title="Delete all user accounts from Firebase except Super Admin"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">
+                Delete All Users Except Admin
+              </span>
+            </button>
+            <button
+              onClick={() => setShowFactoryResetModal(true)}
               disabled={resettingData}
               className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
               title="Delete all website data except Super Admin"
@@ -681,21 +912,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                     )}
                                   </td>
                                   <td className="p-3 text-right pr-4">
-                                    {user.role === 'admin' ? (
-                                      <span className="text-[10px] text-slate-400 font-bold">Protected</span>
-                                    ) : (
-                                      <button
-                                        onClick={() => handleToggleAccountStatus(user)}
-                                        className={`px-3 py-1 rounded-lg font-bold text-xs transition-colors shadow-xs ${
-                                          user.disabled
-                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                            : 'bg-rose-600 hover:bg-rose-700 text-white'
-                                        }`}
-                                      >
-                                        {user.disabled ? 'Enable Account' : 'Disable Account'}
-                                      </button>
-                                    )}
-                                  </td>
+                                     {user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' || user.email?.toLowerCase() === 'cartgosupport@gmail.com' ? (
+                                       <span className="text-[10px] text-slate-400 font-bold">Protected</span>
+                                     ) : (
+                                       <div className="flex items-center justify-end gap-1.5">
+                                         <button
+                                           onClick={() => handleOpenPasswordModal(user)}
+                                           className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs transition-colors shadow-xs flex items-center gap-1"
+                                           title="Change User Password"
+                                         >
+                                           <Key className="w-3 h-3" />
+                                           <span>Password</span>
+                                         </button>
+                                         <button
+                                           onClick={() => handleToggleAccountStatus(user)}
+                                           className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors shadow-xs ${
+                                             user.disabled
+                                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                               : 'bg-amber-600 hover:bg-amber-700 text-white'
+                                           }`}
+                                         >
+                                           {user.disabled ? 'Enable' : 'Disable'}
+                                         </button>
+                                         <button
+                                           onClick={() => setUserToDelete(user)}
+                                           className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs transition-colors shadow-xs flex items-center gap-1"
+                                           title="Delete User Account"
+                                         >
+                                           <Trash2 className="w-3 h-3" />
+                                           <span>Delete</span>
+                                         </button>
+                                       </div>
+                                     )}
+                                   </td>
                                 </tr>
                               );
                             })
@@ -973,6 +1222,283 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
           )}
         </div>
       </div>
+
+      {/* Super Admin Change User Password Modal Overlay */}
+      {selectedUserForPasswordChange && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-300" />
+                <h3 className="font-extrabold text-sm">Super Admin: Change User Password</h3>
+              </div>
+              <button
+                onClick={() => setSelectedUserForPasswordChange(null)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              {/* Target User Info Card */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-900">{selectedUserForPasswordChange.displayName || 'Marketplace User'}</span>
+                  <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-extrabold uppercase text-[10px]">
+                    {selectedUserForPasswordChange.role}
+                  </span>
+                </div>
+                <div className="text-slate-600 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-medium">{selectedUserForPasswordChange.email}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  UID: {selectedUserForPasswordChange.uid}
+                </div>
+              </div>
+
+              {/* Alerts */}
+              {passwordChangeSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{passwordChangeSuccess}</span>
+                </div>
+              )}
+
+              {passwordChangeError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{passwordChangeError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Enter New Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <input
+                      type={showPasswordText ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={newPasswordInput}
+                      onChange={(e) => setNewPasswordInput(e.target.value)}
+                      placeholder="Enter new password (min. 6 characters)..."
+                      className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordText(!showPasswordText)}
+                      className="absolute right-3 top-2.5 p-0.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    As Super Admin, setting a new password here immediately grants access with this password on user login.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={passwordChangeLoading}
+                    className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Key className="w-4 h-4 text-amber-300" />
+                    <span>{passwordChangeLoading ? 'Updating Password...' : 'Save & Override Password'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendResetEmailOnly}
+                    disabled={passwordChangeLoading}
+                    className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Mail className="w-4 h-4 text-purple-600" />
+                    <span>Send Reset Password Email Instead</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="bg-slate-50 p-3 border-t border-slate-200 text-center">
+              <button
+                onClick={() => setSelectedUserForPasswordChange(null)}
+                className="text-xs font-bold text-slate-500 hover:text-slate-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Single User Delete Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-rose-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-200" />
+                <h3 className="font-extrabold text-sm">Delete User Account</h3>
+              </div>
+              <button
+                onClick={() => setUserToDelete(null)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                <div className="font-bold text-slate-900">{userToDelete.displayName || 'Marketplace User'}</div>
+                <div className="text-slate-600 flex items-center gap-1">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{userToDelete.email}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">UID: {userToDelete.uid}</div>
+              </div>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 font-semibold space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Permanent Firebase Account Deletion</span>
+                </div>
+                <p className="text-[11px] leading-relaxed font-normal">
+                  Are you sure you want to permanently delete this user document? This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUserToDelete(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingUser}
+                  onClick={() => confirmDeleteUser(userToDelete)}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isDeletingUser ? 'Deleting Account...' : 'Permanently Delete User'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete All Users Modal */}
+      {showDeleteAllUsersModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-amber-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-amber-200" />
+                <h3 className="font-extrabold text-sm">Delete All Registered Accounts</h3>
+              </div>
+              <button
+                onClick={() => setShowDeleteAllUsersModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Bulk User Deletion Warning</span>
+                </div>
+                <p className="text-[11px] leading-relaxed font-normal">
+                  This will permanently delete all registered user and seller profiles from Firebase, except Super Admin accounts (hashirfarman0047@gmail.com / cartgosupport@gmail.com).
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteAllUsersModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={resettingData}
+                  onClick={executeDeleteAllUsers}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{resettingData ? 'Deleting Accounts...' : 'Delete All Accounts'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Factory Reset Modal */}
+      {showFactoryResetModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-rose-700 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
+                <h3 className="font-extrabold text-sm">Wipe All Database Data</h3>
+              </div>
+              <button
+                onClick={() => setShowFactoryResetModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-2">
+                <p className="font-bold">This complete factory reset will permanently wipe:</p>
+                <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-rose-800 font-medium">
+                  <li>All user & seller accounts (except Super Admin)</li>
+                  <li>All listed products & catalog</li>
+                  <li>All customer orders & revenue analytics</li>
+                  <li>All notification announcements</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFactoryResetModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={resettingData}
+                  onClick={executeFactoryReset}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{resettingData ? 'Wiping Database...' : 'Wipe All Data Now'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
