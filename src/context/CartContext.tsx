@@ -10,6 +10,7 @@ interface CartContextType {
   clearCart: () => void;
   toggleWishlist: (product: Product) => void;
   isInWishlist: (productId: string) => boolean;
+  syncProducts: (latestProducts: Product[]) => void;
   appliedCoupon: string | null;
   applyCoupon: (code: string) => boolean;
   removeCoupon: () => void;
@@ -112,6 +113,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return wishlist.some((item) => item.id === productId);
   };
 
+  const syncProducts = (latestProducts: Product[]) => {
+    if (!latestProducts || latestProducts.length === 0) return;
+
+    setCart((prev) =>
+      prev.map((item) => {
+        const updated = latestProducts.find((p) => p.id === item.product.id);
+        if (updated) {
+          return { ...item, product: updated };
+        }
+        return item;
+      })
+    );
+
+    setWishlist((prev) =>
+      prev.map((item) => {
+        const updated = latestProducts.find((p) => p.id === item.id);
+        return updated || item;
+      })
+    );
+  };
+
   const applyCoupon = (code: string) => {
     const formatted = code.trim().toUpperCase();
     if (formatted === 'CARTGO20' || formatted === 'CARTGO10' || formatted === 'WELCOME50') {
@@ -155,6 +177,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCart,
         toggleWishlist,
         isInWishlist,
+        syncProducts,
         appliedCoupon,
         applyCoupon,
         removeCoupon,

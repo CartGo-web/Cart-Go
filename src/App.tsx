@@ -51,7 +51,7 @@ import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from './utils/
 
 function MarketplaceMain() {
   const { currentUser, userProfile } = useAuth();
-  const { addToCart } = useCart();
+  const { addToCart, syncProducts } = useCart();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -254,6 +254,7 @@ function MarketplaceMain() {
                   reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : 0,
                   salesCount: typeof data.salesCount === 'number' ? data.salesCount : 0,
                   isFlashSale: !!data.isFlashSale,
+                  deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
                   additionalImages: Array.isArray(data.additionalImages) ? data.additionalImages : undefined,
                   createdAt: data.createdAt || new Date().toISOString(),
                 });
@@ -281,6 +282,19 @@ function MarketplaceMain() {
       if (unsub) unsub();
     };
   }, []);
+
+  // Sync live updated product details across active detail modal, cart & wishlist
+  useEffect(() => {
+    if (products.length > 0) {
+      syncProducts(products);
+      if (selectedProduct) {
+        const updated = products.find((p) => p.id === selectedProduct.id);
+        if (updated) {
+          setSelectedProduct(updated);
+        }
+      }
+    }
+  }, [products]);
 
   // Filtered and Sorted Products
   const filteredProducts = products.filter((p) => {

@@ -23,9 +23,14 @@ try {
       ? firebaseConfigData.firestoreDatabaseId
       : undefined;
 
+  const firestoreSettings = {
+    localCache: memoryLocalCache(),
+    experimentalForceLongPolling: true,
+  };
+
   firestoreInstance = dbId
-    ? initializeFirestore(app, { localCache: memoryLocalCache(), experimentalAutoDetectLongPolling: true }, dbId)
-    : initializeFirestore(app, { localCache: memoryLocalCache(), experimentalAutoDetectLongPolling: true });
+    ? initializeFirestore(app, firestoreSettings, dbId)
+    : initializeFirestore(app, firestoreSettings);
 } catch (e) {
   firestoreInstance =
     firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
