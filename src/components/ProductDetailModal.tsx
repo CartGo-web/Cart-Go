@@ -325,12 +325,20 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
               {/* Delivery Info */}
               <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
-                <div className="flex items-center gap-2 font-extrabold text-[#FF5500]">
-                  <Truck className="w-4 h-4 shrink-0" />
-                  <span>Delivery charges are according to your location</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-extrabold text-[#FF5500]">
+                    <Truck className="w-4 h-4 shrink-0" />
+                    <span>Delivery Charges:</span>
+                  </div>
+                  <span className={`font-black text-xs ${product.deliveryFee && product.deliveryFee > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
+                    {product.deliveryFee && product.deliveryFee > 0 ? formatPKR(product.deliveryFee) : 'FREE Delivery'}
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-600 pl-6">
-                  Cash on Delivery (COD) is the only available payment method.
+                  {product.deliveryFee && product.deliveryFee > 0
+                    ? `Flat delivery fee of ${formatPKR(product.deliveryFee)} charged by seller.`
+                    : 'This seller offers 100% Free Delivery on this product!'}
+                  {' '}Cash on Delivery (COD) available.
                 </p>
               </div>
             </div>

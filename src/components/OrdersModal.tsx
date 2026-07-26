@@ -146,7 +146,10 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({ isOpen, onClose }) => 
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-500">Total Paid:</span>
+                      <span className="text-slate-500 text-[11px]">
+                        {order.deliveryFee && order.deliveryFee > 0 ? `(Inc. ${formatPKR(order.deliveryFee)} Delivery)` : '(Free Delivery)'}
+                      </span>
+                      <span className="text-slate-500">Total:</span>
                       <span className="text-base font-extrabold text-[#F57224]">
                         {formatPKR(order.totalAmount)}
                       </span>

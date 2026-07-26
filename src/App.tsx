@@ -15,6 +15,7 @@ import { OrdersModal } from './components/OrdersModal';
 import { WishlistModal } from './components/WishlistModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { NotificationsModal } from './components/NotificationsModal';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { Review, Product } from './types';
 import { db } from './lib/firebase';
 import { SEED_PRODUCTS } from './data/seedProducts';
@@ -331,7 +332,7 @@ function MarketplaceMain() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col selection:bg-orange-100 selection:text-[#F57224]">
+    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col selection:bg-orange-100 selection:text-[#F57224] pb-16 md:pb-0">
       {/* Header */}
       <Header
         onOpenAuth={() => setAuthModalOpen(true)}
@@ -816,6 +817,29 @@ function MarketplaceMain() {
         onClose={() => handleSelectProduct(null)}
         onBuyNow={handleBuyNow}
         onSelectStore={handleSelectStore}
+      />
+
+      {/* Sticky Mobile Bottom Navigation Bar for easy 1-click access to Login/Register */}
+      <MobileBottomNav
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenCart={() => setCartDrawerOpen(true)}
+        onOpenOrders={() => {
+          if (!currentUser) setAuthModalOpen(true);
+          else setOrdersModalOpen(true);
+        }}
+        onOpenSeller={() => {
+          if (!currentUser) setAuthModalOpen(true);
+          else setSellerDashboardOpen(true);
+        }}
+        onOpenNotifications={() => {
+          if (!currentUser) setAuthModalOpen(true);
+          else setNotificationsModalOpen(true);
+        }}
+        onResetHome={() => {
+          setSelectedCategory(null);
+          setSearchQuery('');
+          setSelectedStoreId(null);
+        }}
       />
     </div>
   );

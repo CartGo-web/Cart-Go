@@ -289,10 +289,11 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <button
                 onClick={onOpenAuth}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                className="bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white text-xs font-extrabold px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl transition-all flex items-center gap-1.5 shadow-md hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                title="Login or Register Account"
               >
-                <UserIcon className="w-4 h-4 text-orange-400" />
-                <span>Login / Register</span>
+                <UserIcon className="w-4 h-4 text-white" />
+                <span className="whitespace-nowrap">Login / Register</span>
               </button>
             )}
           </div>
@@ -361,6 +362,59 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Mobile Menu Drawer Overlay */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-slate-900 border-b border-slate-800 text-white p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          {/* Prominent Login / Register Banner for Non-Logged In Users */}
+          {!currentUser ? (
+            <div className="p-3 bg-gradient-to-br from-slate-800 via-slate-850 to-slate-900 border-2 border-[#FF5500]/50 rounded-2xl space-y-2.5 shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-[#FF5500] text-white rounded-lg">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-white">Join Cart Go Today</h4>
+                    <p className="text-[10px] text-slate-300">Login or create account in 10 seconds</p>
+                  </div>
+                </div>
+                <span className="text-[9px] font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 px-2 py-0.5 rounded-full uppercase">
+                  Fast COD
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth();
+                  }}
+                  className="w-full py-2.5 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                >
+                  <UserIcon className="w-3.5 h-3.5 text-white" />
+                  <span>Login / Sign In</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth();
+                  }}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#FF9900]" />
+                  <span>Register Account</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-slate-800 border border-slate-700 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-white">{userProfile?.displayName || 'Marketplace User'}</p>
+                <p className="text-[10px] text-slate-400">{currentUser.email}</p>
+              </div>
+              <span className="text-[10px] bg-orange-500/20 text-orange-300 border border-orange-400/30 px-2 py-0.5 rounded-full uppercase font-bold">
+                {userProfile?.role || 'buyer'}
+              </span>
+            </div>
+          )}
+
           {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
             <button
               onClick={() => {
@@ -409,7 +463,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="px-3 py-2.5 bg-[#FF5500] hover:bg-[#E04400] text-white rounded-xl font-bold flex items-center gap-2"
               >
                 <UserIcon className="w-4 h-4" />
-                <span>Login / Register</span>
+                <span>Track Orders</span>
               </button>
             )}
           </div>

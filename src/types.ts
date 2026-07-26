@@ -40,6 +40,7 @@ export interface Product {
   reviewCount: number;
   salesCount: number;
   isFlashSale?: boolean;
+  deliveryFee?: number;
   createdAt: string;
 }
 
@@ -55,6 +56,7 @@ export interface OrderItem {
   quantity: number;
   imageUrl: string;
   sellerId: string;
+  deliveryFee?: number;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
@@ -66,6 +68,7 @@ export interface Order {
   buyerEmail: string;
   items: OrderItem[];
   totalAmount: number;
+  deliveryFee?: number;
   status: OrderStatus;
   shippingAddress: {
     fullName: string;

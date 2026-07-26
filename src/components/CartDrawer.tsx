@@ -118,7 +118,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {item.product.title}
                     </h4>
                     <p className="text-xs font-bold text-[#F57224]">
-                      {formatPKR(item.product.price)}
+                      {formatPKR(item.product.price)}{' '}
+                      <span className="text-[10px] font-medium text-slate-500">
+                        ({item.product.deliveryFee && item.product.deliveryFee > 0 ? `+${formatPKR(item.product.deliveryFee)} Delivery` : 'Free Delivery'})
+                      </span>
                     </p>
 
                     {/* Quantity controls */}
@@ -216,11 +219,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   </div>
                 )}
 
+                <div className="flex justify-between text-slate-600">
+                  <span>Delivery Charges</span>
+                  <span className={deliveryFee > 0 ? 'font-semibold text-slate-900' : 'font-extrabold text-emerald-600'}>
+                    {deliveryFee > 0 ? formatPKR(deliveryFee) : 'FREE'}
+                  </span>
+                </div>
+
                 {/* Delivery Charges Notice */}
                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start gap-2">
                   <Truck className="w-4 h-4 text-[#FF5500] shrink-0 mt-0.5" />
                   <div className="text-[11px] font-semibold leading-tight">
-                    <span>Delivery charges are according to your location</span>
+                    <span>
+                      {deliveryFee > 0
+                        ? `Delivery charges included in Grand Total (${formatPKR(deliveryFee)}).`
+                        : 'Free Delivery applied on all items in your cart!'}
+                    </span>
                   </div>
                 </div>
 

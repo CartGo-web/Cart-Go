@@ -136,9 +136,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     discountAmount = subtotal * 0.5;
   }
 
-  // Delivery fee is removed; charges are according to location at delivery
-  const deliveryFee = 0;
-  const grandTotal = Math.max(0, subtotal - discountAmount);
+  // Delivery fee calculated from custom product delivery charges in cart
+  const deliveryFee = cart.reduce((acc, item) => {
+    const fee = typeof item.product.deliveryFee === 'number' ? item.product.deliveryFee : 0;
+    return acc + fee;
+  }, 0);
+  const grandTotal = Math.max(0, subtotal - discountAmount + deliveryFee);
   const totalItemsCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
   return (

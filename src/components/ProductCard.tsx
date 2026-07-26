@@ -145,11 +145,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, onS
               <div className="text-sm font-extrabold text-[#FF5500]">
                 {formatPKR(product.price)}
               </div>
-              {product.originalPrice && (
-                <div className="text-[10px] text-slate-400 line-through">
-                  {formatPKR(product.originalPrice)}
-                </div>
-              )}
+              <div className="flex items-center gap-1.5">
+                {product.originalPrice && (
+                  <span className="text-[10px] text-slate-400 line-through">
+                    {formatPKR(product.originalPrice)}
+                  </span>
+                )}
+                <span className={`text-[9px] font-bold px-1 rounded ${product.deliveryFee && product.deliveryFee > 0 ? 'text-slate-500 bg-slate-100' : 'text-emerald-700 bg-emerald-50'}`}>
+                  {product.deliveryFee && product.deliveryFee > 0 ? `+${formatPKR(product.deliveryFee)} Shipping` : 'Free Delivery'}
+                </span>
+              </div>
             </div>
 
             <button

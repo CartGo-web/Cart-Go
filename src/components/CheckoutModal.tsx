@@ -26,7 +26,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   onClose,
   onOrderSuccess,
 }) => {
-  const { cart, grandTotal, clearCart } = useCart();
+  const { cart, subtotal, discountAmount, deliveryFee, grandTotal, clearCart } = useCart();
   const { currentUser, userProfile } = useAuth();
 
   const [fullName, setFullName] = useState(userProfile?.displayName || '');
@@ -51,6 +51,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       return;
     }
 
+    if (!fullName || !fullName.trim()) {
+      setError('Recipient Full Name is required to place an order.');
+      return;
+    }
+
+    if (!phone || !phone.trim() || phone.trim().replace(/\D/g, '').length < 7) {
+      setError('Buyer Phone Number is strictly required to place an order. Without customer phone number buyer cannot buy anything.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -62,6 +72,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         quantity: item.quantity,
         imageUrl: item.product.imageUrl,
         sellerId: item.product.sellerId,
+        deliveryFee: item.product.deliveryFee || 0,
       }));
 
       const newOrder = {
@@ -70,6 +81,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         buyerEmail: currentUser.email || '',
         items: orderItems,
         totalAmount: grandTotal,
+        deliveryFee: deliveryFee || 0,
         status: 'pending',
         shippingAddress: {
           fullName,
@@ -144,7 +156,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Recipient Full Name
+                  Recipient Full Name <span className="text-[#F57224] font-bold">*</span>
                 </label>
                 <input
                   type="text"
@@ -158,16 +170,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Phone Number
+                  Phone Number <span className="text-[#F57224] font-bold">* (Strictly Compulsory)</span>
                 </label>
                 <input
                   type="tel"
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+92 300 1234567"
+                  placeholder="e.g. +92 300 1234567"
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#F57224]"
                 />
+                <p className="text-[10px] text-[#F57224] font-bold mt-1">
+                  Without customer phone number, buyer cannot complete order.
+                </p>
               </div>
             </div>
 
@@ -240,23 +255,35 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           </div>
 
           {/* Delivery Charges & Courier Notice */}
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
-            <div className="flex items-center gap-2">
-              <Truck className="w-4 h-4 text-[#FF5500] shrink-0" />
-              <span className="text-xs font-extrabold text-slate-900">
-                Delivery Charges & Courier Information
+          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-2">
+            <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-[#FF5500] shrink-0" />
+                <span className="text-xs font-extrabold text-slate-900">
+                  Delivery Charges & Courier Information
+                </span>
+              </div>
+              <span className={`text-xs font-bold ${deliveryFee > 0 ? 'text-slate-900' : 'text-emerald-700'}`}>
+                {deliveryFee > 0 ? formatPKR(deliveryFee) : 'FREE DELIVERY'}
               </span>
             </div>
             <p className="text-[11px] text-slate-700 leading-snug">
-              Delivery charges are according to your location. Sellers configure their favourite courier company to deliver to your customer address. Sometimes delivery charges may not be shown directly on checkout, but will be included upon delivery.
+              {deliveryFee > 0
+                ? `Delivery charges of ${formatPKR(deliveryFee)} set by the seller(s) are included in your final payable amount.`
+                : 'Enjoy Free Delivery on all item(s) in this order! Cash on Delivery will be collected upon arrival at your doorstep.'}
             </p>
           </div>
 
           {/* Total & Submit Button */}
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <span className="text-xs text-slate-500">Order Total Amount</span>
-              <div className="text-xl font-black text-[#FF5500]">{formatPKR(grandTotal)}</div>
+            <div className="space-y-0.5">
+              <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                <span>Subtotal: {formatPKR(subtotal)}</span>
+                {discountAmount > 0 && <span className="text-emerald-600 font-bold">(-{formatPKR(discountAmount)})</span>}
+                <span>• Delivery: {deliveryFee > 0 ? formatPKR(deliveryFee) : 'Free'}</span>
+              </div>
+              <span className="text-xs text-slate-600 font-bold block">Grand Payable Total</span>
+              <div className="text-2xl font-black text-[#FF5500]">{formatPKR(grandTotal)}</div>
             </div>
 
             <button

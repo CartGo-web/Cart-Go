@@ -65,12 +65,12 @@ const PRESET_IMAGES = [
 
 export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose, onOpenAdmin }) => {
   const { currentUser, userProfile, isAdmin, updateUserProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'add' | 'products' | 'orders' | 'notifications' | 'about'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('add');
 
   // Notifications State
   const [notifications, setNotifications] = useState<SellerNotification[]>([]);
 
-  // Form State
+  // Form State for Adding Product
   const [title, setTitle] = useState('');
   const [sellerPhone, setSellerPhone] = useState(userProfile?.phone || '');
   const [description, setDescription] = useState('');
@@ -81,12 +81,41 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [stock, setStock] = useState('20');
   const [isFlashSale, setIsFlashSale] = useState(false);
+  const [deliveryFee, setDeliveryFee] = useState('0');
+
+  // Store Settings & Name State
+  const [storeNameInput, setStoreNameInput] = useState(userProfile?.displayName || '');
+  const [storePhoneInput, setStorePhoneInput] = useState(userProfile?.phone || '');
+  const [storeAddressInput, setStoreAddressInput] = useState(userProfile?.address || '');
+  const [updatingStore, setUpdatingStore] = useState(false);
 
   useEffect(() => {
-    if (userProfile?.phone) {
-      setSellerPhone(userProfile.phone);
+    if (userProfile) {
+      if (userProfile.displayName && !storeNameInput) setStoreNameInput(userProfile.displayName);
+      if (userProfile.phone) {
+        setSellerPhone(userProfile.phone);
+        if (!storePhoneInput) setStorePhoneInput(userProfile.phone);
+      }
+      if (userProfile.address && !storeAddressInput) setStoreAddressInput(userProfile.address);
     }
   }, [userProfile]);
+
+  // Product Editing State
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editOriginalPrice, setEditOriginalPrice] = useState('');
+  const [editStock, setEditStock] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editAdditionalImages, setEditAdditionalImages] = useState<string[]>([]);
+  const [editIsFlashSale, setEditIsFlashSale] = useState(false);
+  const [editDeliveryFee, setEditDeliveryFee] = useState('0');
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -106,6 +135,135 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   } | null>(null);
   const [copiedProdLink, setCopiedProdLink] = useState(false);
   const [copiedStoreLink, setCopiedStoreLink] = useState(false);
+
+  const handleSaveStoreProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (!storeNameInput.trim()) {
+      setErrorMsg('Store Name cannot be blank.');
+      return;
+    }
+
+    setUpdatingStore(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const newName = storeNameInput.trim();
+      const newPhone = storePhoneInput.trim();
+      const newAddress = storeAddressInput.trim();
+
+      // 1. Update userProfile in Firestore / Auth
+      await updateUserProfile({
+        displayName: newName,
+        phone: newPhone,
+        address: newAddress,
+      });
+
+      // 2. Update sellerName & sellerPhone on all products listed by this seller in 'products' collection
+      const qProds = query(collection(db, 'products'), where('sellerId', '==', currentUser.uid));
+      const snapProds = await getDocs(qProds);
+      const updatePromises = snapProds.docs.map((docSnap) =>
+        updateDoc(doc(db, 'products', docSnap.id), {
+          sellerName: newName,
+          sellerPhone: newPhone,
+        })
+      );
+      await Promise.all(updatePromises);
+
+      setSuccessMsg(`Store Name & Profile updated to "${newName}" successfully! All your active product listings have been updated.`);
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to update store details:', err);
+      setErrorMsg('Failed to update store details: ' + (err.message || 'Error occurred'));
+    } finally {
+      setUpdatingStore(false);
+    }
+  };
+
+  const handleOpenEditProduct = (p: Product) => {
+    setEditingProduct(p);
+    setEditTitle(p.title || '');
+    setEditPrice(p.price ? p.price.toString() : '');
+    setEditOriginalPrice(p.originalPrice ? p.originalPrice.toString() : '');
+    setEditStock(p.stock !== undefined ? p.stock.toString() : '20');
+    setEditCategory(p.category || CATEGORIES[0].id);
+    setEditDescription(p.description || '');
+    setEditImageUrl(p.imageUrl || '');
+    setEditAdditionalImages(p.additionalImages || []);
+    setEditIsFlashSale(!!p.isFlashSale);
+    setEditDeliveryFee(p.deliveryFee !== undefined ? p.deliveryFee.toString() : '0');
+  };
+
+  const handleSaveEditedProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct || !currentUser) return;
+
+    if (!editTitle.trim()) {
+      setErrorMsg('Product title is required.');
+      return;
+    }
+
+    setSubmittingEdit(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      let finalMainImage = editImageUrl ? editImageUrl.trim() : editingProduct.imageUrl;
+      if (finalMainImage.startsWith('data:image/')) {
+        finalMainImage = await ensureCompressedDataUrl(finalMainImage, 800, 0.7);
+      }
+
+      let finalGallery: string[] = [];
+      if (editAdditionalImages && editAdditionalImages.length > 0) {
+        for (const imgStr of editAdditionalImages) {
+          if (imgStr.startsWith('data:image/')) {
+            const compressed = await ensureCompressedDataUrl(imgStr, 800, 0.7);
+            finalGallery.push(compressed);
+          } else {
+            finalGallery.push(imgStr);
+          }
+        }
+      }
+      finalGallery = finalGallery.filter((img) => img && !PRESET_IMAGES.includes(img) && img !== finalMainImage);
+
+      const parsedPrice = parseFloat(editPrice) || editingProduct.price;
+      const parsedStock = parseInt(editStock, 10);
+      const parsedOriginal = editOriginalPrice ? parseFloat(editOriginalPrice) : null;
+
+      const updatedPayload: Record<string, any> = {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        price: parsedPrice,
+        category: editCategory,
+        imageUrl: finalMainImage,
+        stock: isNaN(parsedStock) ? editingProduct.stock : parsedStock,
+        isFlashSale: editIsFlashSale,
+        deliveryFee: parseFloat(editDeliveryFee) || 0,
+        additionalImages: finalGallery,
+        sellerName: userProfile?.displayName || storeNameInput || editingProduct.sellerName,
+        sellerPhone: sellerPhone || storePhoneInput || editingProduct.sellerPhone,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (parsedOriginal !== null && !isNaN(parsedOriginal)) {
+        updatedPayload.originalPrice = parsedOriginal;
+      } else {
+        updatedPayload.originalPrice = null;
+      }
+
+      await updateDoc(doc(db, 'products', editingProduct.id), updatedPayload);
+
+      setSuccessMsg(`"${editTitle.trim()}" updated successfully!`);
+      setEditingProduct(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to edit product:', err);
+      setErrorMsg('Failed to update product: ' + (err.message || 'Error occurred'));
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
 
   const handleShareMyStore = async () => {
     if (!currentUser) return;
@@ -380,6 +538,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         reviewCount: 0,
         salesCount: 0,
         isFlashSale,
+        deliveryFee: parseFloat(deliveryFee) || 0,
         createdAt: new Date().toISOString(),
       };
 
@@ -428,6 +587,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       setOriginalPrice('');
       setImageUrl('');
       setAdditionalImages([]);
+      setDeliveryFee('0');
       setSuccessMsg('Product published successfully & shareable link created!');
       setTimeout(() => setSuccessMsg(null), 5000);
       setActiveTab('products');
@@ -650,6 +810,18 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             >
               <Package className="w-4 h-4" />
               <span>My Listings ({myProducts.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('store')}
+              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
+                activeTab === 'store'
+                  ? 'border-[#FF5500] text-[#FF5500]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>Edit Store Profile & Name</span>
             </button>
 
             <button
@@ -958,6 +1130,73 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 </div>
               </div>
 
+              {/* Custom Delivery Charges Section */}
+              <div className="p-3.5 bg-orange-50/70 border border-orange-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-[#FF5500]" />
+                    <span>Custom Delivery / Shipping Charges (PKR / Rs.)</span>
+                  </label>
+                  <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${parseFloat(deliveryFee) > 0 ? 'bg-orange-100 text-[#FF5500]' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {parseFloat(deliveryFee) > 0 ? `Rs. ${deliveryFee}` : 'FREE Delivery'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 items-center">
+                  <div className="relative flex-1 w-full">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Rs.</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="0 (Free Delivery) or custom fee (e.g. 150, 200...)"
+                      value={deliveryFee}
+                      onChange={(e) => setDeliveryFee(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1 w-full sm:w-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryFee('0')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        deliveryFee === '0'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Free (Rs. 0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryFee('149')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        deliveryFee === '149'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Rs. 149
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryFee('250')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        deliveryFee === '250'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Rs. 250
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  Specify custom delivery charges for this product. Set Rs. 0 to offer Free Shipping to buyers.
+                </p>
+              </div>
+
               {/* Product Picture Upload Section */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
@@ -1121,15 +1360,28 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                       />
                       <div>
                         <h4 className="text-xs font-bold text-slate-800 line-clamp-1">{p.title}</h4>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-3 mt-0.5">
+                        <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-3 mt-0.5">
                           <span className="text-[#F57224] font-bold">{formatPKR(p.price)}</span>
                           <span>Stock: {p.stock}</span>
                           <span className="capitalize">Category: {p.category}</span>
+                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${p.deliveryFee && p.deliveryFee > 0 ? 'bg-orange-100 text-[#FF5500]' : 'bg-emerald-100 text-emerald-700'}`}>
+                            {p.deliveryFee && p.deliveryFee > 0 ? `Delivery: ${formatPKR(p.deliveryFee)}` : 'Free Delivery'}
+                          </span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditProduct(p)}
+                        className="p-2 text-slate-600 hover:text-[#FF5500] hover:bg-orange-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                        title="Edit Product Details"
+                      >
+                        <Edit className="w-4 h-4 text-[#FF5500]" />
+                        <span className="hidden sm:inline">Edit</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleShareProduct(p)}
@@ -1181,6 +1433,88 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 ))
               )}
             </div>
+          )}
+
+          {activeTab === 'store' && (
+            <form onSubmit={handleSaveStoreProfile} className="space-y-5 animate-in fade-in duration-200">
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 rounded-2xl text-white shadow-md border border-slate-700 flex items-center gap-3">
+                <div className="p-3 bg-gradient-to-tr from-[#FF9900] to-[#FF5500] rounded-xl text-white shadow-xs shrink-0">
+                  <Store className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold">Store Name & Seller Profile Settings</h3>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Change your store name, shop brand title, contact phone number, and location visible to buyers across Cart Go.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-5 bg-orange-50/70 border border-orange-200 rounded-2xl space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Store Name / Shop Brand Name <span className="text-[#FF5500]">*</span>
+                  </label>
+                  <div className="relative">
+                    <Store className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Unique Electronics Store"
+                      value={storeNameInput}
+                      onChange={(e) => setStoreNameInput(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Updating your store name will instantly update the seller name across all your active marketplace listings.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Seller Contact Phone Number <span className="text-[#FF5500]">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="tel"
+                        required
+                        placeholder="e.g. +92 300 1234567"
+                        value={storePhoneInput}
+                        onChange={(e) => setStorePhoneInput(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">
+                      Store Location / Address
+                    </label>
+                    <div className="relative">
+                      <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        placeholder="e.g. Shop #4, Main Market, Lahore"
+                        value={storeAddressInput}
+                        onChange={(e) => setStoreAddressInput(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={updatingStore}
+                  className="w-full py-3 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>{updatingStore ? 'Updating Store Name & Details...' : 'Save Store Name & Details'}</span>
+                </button>
+              </div>
+            </form>
           )}
 
           {activeTab === 'orders' && (
@@ -1653,6 +1987,269 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 Close Buyer Details
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal Overlay */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden relative my-auto max-h-[90vh] flex flex-col border border-slate-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-5 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <Edit className="w-5 h-5 text-[#FF9900]" />
+                <div>
+                  <h3 className="text-sm font-extrabold">Edit Product Listing</h3>
+                  <p className="text-xs text-slate-300">Modify product title, price, stock, images & category</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="p-1 rounded-full hover:bg-slate-800 transition-colors text-slate-300 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveEditedProduct} className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Product Title / Name <span className="text-[#FF5500]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Category <span className="text-[#FF5500]">*</span>
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  >
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Price (PKR / Rs.) <span className="text-[#FF5500]">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    required
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Original / Strikethrough Price
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editOriginalPrice}
+                    onChange={(e) => setEditOriginalPrice(e.target.value)}
+                    placeholder="e.g. 5000"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Stock Quantity <span className="text-[#FF5500]">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editStock}
+                    onChange={(e) => setEditStock(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                  />
+                </div>
+              </div>
+
+              {/* Custom Delivery Charges Section in Edit Modal */}
+              <div className="p-3.5 bg-orange-50/70 border border-orange-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-[#FF5500]" />
+                    <span>Custom Delivery / Shipping Fee (PKR / Rs.)</span>
+                  </label>
+                  <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${parseFloat(editDeliveryFee) > 0 ? 'bg-orange-100 text-[#FF5500]' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {parseFloat(editDeliveryFee) > 0 ? `Rs. ${editDeliveryFee}` : 'FREE Delivery'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 items-center">
+                  <div className="relative flex-1 w-full">
+                    <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">Rs.</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="0 (Free) or custom fee (e.g. 150)"
+                      value={editDeliveryFee}
+                      onChange={(e) => setEditDeliveryFee(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1 w-full sm:w-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditDeliveryFee('0')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        editDeliveryFee === '0'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Free (Rs. 0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditDeliveryFee('149')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        editDeliveryFee === '149'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Rs. 149
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditDeliveryFee('250')}
+                      className={`px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-all ${
+                        editDeliveryFee === '250'
+                          ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      Rs. 250
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Product Description <span className="text-[#FF5500]">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
+                />
+              </div>
+
+              {/* Cover Image Upload / String */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <label className="block font-bold text-slate-800 uppercase flex items-center gap-1.5 text-[11px]">
+                  <ImageIcon className="w-4 h-4 text-[#FF5500]" />
+                  <span>Main Product Cover Image</span>
+                </label>
+
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const compressed = await compressImageFile(file, 800, 0.7);
+                      if (compressed) setEditImageUrl(compressed);
+                    }
+                  }}
+                  accept="image/*"
+                  className="hidden"
+                />
+
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                  <button
+                    type="button"
+                    onClick={() => editFileInputRef.current?.click()}
+                    className="w-full sm:w-auto px-4 py-2 bg-white border border-slate-300 hover:border-[#FF5500] rounded-xl font-bold text-slate-700 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <UploadCloud className="w-4 h-4 text-[#FF5500]" />
+                    <span>Upload New Cover Image</span>
+                  </button>
+
+                  {editImageUrl && (
+                    <img
+                      src={editImageUrl}
+                      alt="Cover preview"
+                      className="w-12 h-12 object-cover rounded-lg border border-slate-300 bg-white"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <span className="block text-[10px] font-semibold text-slate-500 mb-1">
+                    Image URL Link (Optional):
+                  </span>
+                  <input
+                    type="text"
+                    value={editImageUrl}
+                    onChange={(e) => setEditImageUrl(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-200 rounded-lg font-mono text-[11px] text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="editFlashModal"
+                  checked={editIsFlashSale}
+                  onChange={(e) => setEditIsFlashSale(e.target.checked)}
+                  className="w-4 h-4 text-[#FF5500] rounded accent-[#FF5500]"
+                />
+                <label htmlFor="editFlashModal" className="font-bold text-slate-800 cursor-pointer">
+                  Feature in Cart Go Flash Sale Section
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEdit}
+                  className="px-5 py-2.5 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {submittingEdit ? 'Saving Changes...' : 'Save Product Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
