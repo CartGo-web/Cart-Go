@@ -25,7 +25,7 @@ try {
 
   const firestoreSettings = {
     localCache: memoryLocalCache(),
-    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
   };
 
   firestoreInstance = dbId

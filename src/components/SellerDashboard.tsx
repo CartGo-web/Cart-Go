@@ -29,6 +29,7 @@ import {
   HelpCircle,
   Info,
 } from 'lucide-react';
+import { ShopifyImporter } from './ShopifyImporter';
 import { useAuth } from '../context/AuthContext';
 import { Product, Order, OrderStatus, SellerNotification } from '../types';
 import { CATEGORIES } from '../data/categories';
@@ -65,7 +66,7 @@ const PRESET_IMAGES = [
 
 export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose, onOpenAdmin }) => {
   const { currentUser, userProfile, isAdmin, updateUserProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'add' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('add');
+  const [activeTab, setActiveTab] = useState<'add' | 'shopify' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('add');
 
   // Notifications State
   const [notifications, setNotifications] = useState<SellerNotification[]>([]);
@@ -801,6 +802,23 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             </button>
 
             <button
+              onClick={() => setActiveTab('shopify')}
+              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
+                activeTab === 'shopify'
+                  ? 'border-[#008060] text-[#008060] bg-emerald-50/60'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Store className="w-4 h-4 text-[#008060]" />
+              <span className="flex items-center gap-1.5">
+                <span>Shopify 1-Click Sync</span>
+                <span className="text-[9px] bg-[#008060] text-white px-1.5 py-0.2 rounded-full font-black uppercase">
+                  1-Click
+                </span>
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('products')}
               className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
                 activeTab === 'products'
@@ -990,8 +1008,47 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             </div>
           )}
 
+          {activeTab === 'shopify' && (
+            <ShopifyImporter
+              onSuccess={(count) => {
+                setSuccessMsg(`Imported ${count} products directly from Shopify!`);
+                setTimeout(() => setSuccessMsg(null), 5000);
+                setActiveTab('products');
+              }}
+            />
+          )}
+
           {activeTab === 'add' && (
             <form onSubmit={handleAddProduct} className="space-y-4">
+              {/* Shopify 1-Click Sync Callout Banner */}
+              <div className="p-3.5 bg-gradient-to-r from-[#008060]/10 via-emerald-500/10 to-[#008060]/10 border-2 border-[#008060]/40 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-[#008060] text-white rounded-xl shadow-xs shrink-0">
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-900 block flex items-center gap-1.5">
+                      Already Have A Shopify Store?
+                      <span className="bg-[#008060] text-white text-[9px] px-1.5 py-0.2 rounded-full font-black uppercase">
+                        1-Click Import
+                      </span>
+                    </span>
+                    <p className="text-xs text-[#008060] font-extrabold">
+                      Import all your store products, images, stock & prices automatically!
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('shopify')}
+                  className="w-full sm:w-auto px-3.5 py-1.5 bg-[#008060] hover:bg-[#006048] text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-sm shrink-0 cursor-pointer transition-all active:scale-95"
+                >
+                  <span>Open Shopify Importer</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
               {/* 3% Company Commission Banner */}
               <div className="p-3.5 bg-gradient-to-r from-orange-500/15 via-amber-500/15 to-orange-500/15 border-2 border-[#FF5500]/40 rounded-2xl flex items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-2.5">
