@@ -102,63 +102,75 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </button>
               </div>
             ) : (
-              cart.map((item) => (
-                <div
-                  key={item.product.id}
-                  className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex gap-3 items-center"
-                >
-                  <img
-                    src={item.product.imageUrl}
-                    alt={item.product.title}
-                    className="w-16 h-16 rounded-lg object-cover shrink-0 bg-white"
-                  />
+              cart.map((item) => {
+                const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
+                return (
+                  <div
+                    key={`${item.product.id}-${item.selectedVariant?.id || 'base'}`}
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex gap-3 items-center"
+                  >
+                    <img
+                      src={item.product.imageUrl}
+                      alt={item.product.title}
+                      className="w-16 h-16 rounded-lg object-cover shrink-0 bg-white"
+                    />
 
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <h4 className="text-xs font-semibold text-slate-800 truncate">
-                      {item.product.title}
-                    </h4>
-                    <p className="text-xs font-bold text-[#F57224]">
-                      {formatPKR(item.product.price)}{' '}
-                      <span className="text-[10px] font-medium text-slate-500">
-                        ({item.product.deliveryFee && item.product.deliveryFee > 0 ? `+${formatPKR(item.product.deliveryFee)} Delivery` : 'Free Delivery'})
-                      </span>
-                    </p>
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h4 className="text-xs font-semibold text-slate-800 truncate">
+                        {item.product.title}
+                      </h4>
 
-                    {/* Quantity controls */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <div className="flex items-center border border-slate-200 rounded-md bg-white">
-                        <button
-                          onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                          className="p-1 hover:bg-slate-100 text-slate-600"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="px-2.5 text-xs font-bold text-slate-800">
-                          {item.quantity}
+                      {item.selectedVariant && (
+                        <div className="flex items-center gap-1">
+                          <span className="inline-block px-1.5 py-0.5 bg-orange-100 text-[#FF5500] text-[10px] font-bold rounded">
+                            Option: {item.selectedVariant.name}
+                          </span>
+                        </div>
+                      )}
+
+                      <p className="text-xs font-bold text-[#F57224]">
+                        {formatPKR(itemPrice)}{' '}
+                        <span className="text-[10px] font-medium text-slate-500">
+                          ({item.product.deliveryFee && item.product.deliveryFee > 0 ? `+${formatPKR(item.product.deliveryFee)} Delivery` : 'Free Delivery'})
                         </span>
+                      </p>
+
+                      {/* Quantity controls */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className="flex items-center border border-slate-200 rounded-md bg-white">
+                          <button
+                            onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.selectedVariant?.id)}
+                            className="p-1 hover:bg-slate-100 text-slate-600"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="px-2.5 text-xs font-bold text-slate-800">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.selectedVariant?.id)}
+                            className="p-1 hover:bg-slate-100 text-slate-600"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
                         <button
-                          onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                          className="p-1 hover:bg-slate-100 text-slate-600"
+                          onClick={() => removeFromCart(item.product.id, item.selectedVariant?.id)}
+                          className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                          title="Remove item"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
+                    </div>
 
-                      <button
-                        onClick={() => removeFromCart(item.product.id)}
-                        className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="text-right font-extrabold text-xs text-slate-900">
+                      {formatPKR(itemPrice * item.quantity)}
                     </div>
                   </div>
-
-                  <div className="text-right font-extrabold text-xs text-slate-900">
-                    {formatPKR(item.product.price * item.quantity)}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 

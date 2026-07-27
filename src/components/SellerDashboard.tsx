@@ -28,10 +28,11 @@ import {
   Truck,
   HelpCircle,
   Info,
+  Layers,
 } from 'lucide-react';
 import { ShopifyImporter } from './ShopifyImporter';
 import { useAuth } from '../context/AuthContext';
-import { Product, Order, OrderStatus, SellerNotification } from '../types';
+import { Product, ProductVariant, Order, OrderStatus, SellerNotification } from '../types';
 import { CATEGORIES } from '../data/categories';
 import { db } from '../lib/firebase';
 import { formatPKR } from '../utils/formatters';
@@ -83,6 +84,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [stock, setStock] = useState('20');
   const [isFlashSale, setIsFlashSale] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState('0');
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
 
   // Store Settings & Name State
   const [storeNameInput, setStoreNameInput] = useState(userProfile?.displayName || '');
@@ -113,7 +115,70 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [editAdditionalImages, setEditAdditionalImages] = useState<string[]>([]);
   const [editIsFlashSale, setEditIsFlashSale] = useState(false);
   const [editDeliveryFee, setEditDeliveryFee] = useState('0');
+  const [editVariants, setEditVariants] = useState<ProductVariant[]>([]);
   const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  // Add Product Variant Handlers
+  const handleAddVariantField = () => {
+    setVariants((prev) => [
+      ...prev,
+      {
+        id: 'var-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: '',
+      },
+    ]);
+  };
+
+  const handleUpdateVariantField = (
+    id: string,
+    field: 'name' | 'price' | 'stock',
+    value: string
+  ) => {
+    setVariants((prev) =>
+      prev.map((v) => {
+        if (v.id !== id) return v;
+        if (field === 'name') return { ...v, name: value };
+        if (field === 'price') return { ...v, price: value !== '' ? parseFloat(value) : undefined };
+        if (field === 'stock') return { ...v, stock: value !== '' ? parseInt(value, 10) : undefined };
+        return v;
+      })
+    );
+  };
+
+  const handleRemoveVariantField = (id: string) => {
+    setVariants((prev) => prev.filter((v) => v.id !== id));
+  };
+
+  // Edit Product Variant Handlers
+  const handleAddEditVariantField = () => {
+    setEditVariants((prev) => [
+      ...prev,
+      {
+        id: 'var-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+        name: '',
+      },
+    ]);
+  };
+
+  const handleUpdateEditVariantField = (
+    id: string,
+    field: 'name' | 'price' | 'stock',
+    value: string
+  ) => {
+    setEditVariants((prev) =>
+      prev.map((v) => {
+        if (v.id !== id) return v;
+        if (field === 'name') return { ...v, name: value };
+        if (field === 'price') return { ...v, price: value !== '' ? parseFloat(value) : undefined };
+        if (field === 'stock') return { ...v, stock: value !== '' ? parseInt(value, 10) : undefined };
+        return v;
+      })
+    );
+  };
+
+  const handleRemoveEditVariantField = (id: string) => {
+    setEditVariants((prev) => prev.filter((v) => v.id !== id));
+  };
 
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -194,6 +259,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     setEditAdditionalImages(p.additionalImages || []);
     setEditIsFlashSale(!!p.isFlashSale);
     setEditDeliveryFee(p.deliveryFee !== undefined ? p.deliveryFee.toString() : '0');
+    setEditVariants(p.variants ? JSON.parse(JSON.stringify(p.variants)) : []);
   };
 
   const handleSaveEditedProduct = async (e: React.FormEvent) => {
@@ -252,6 +318,12 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       } else {
         updatedPayload.originalPrice = null;
       }
+
+      const validEditVariants = editVariants
+        .map((v) => ({ ...v, name: v.name.trim() }))
+        .filter((v) => v.name.length > 0);
+
+      updatedPayload.variants = validEditVariants;
 
       await updateDoc(doc(db, 'products', editingProduct.id), updatedPayload);
 
@@ -551,6 +623,14 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         newProductPayload.additionalImages = finalGallery;
       }
 
+      const validVariants = variants
+        .map((v) => ({ ...v, name: v.name.trim() }))
+        .filter((v) => v.name.length > 0);
+
+      if (validVariants.length > 0) {
+        newProductPayload.variants = validVariants;
+      }
+
       // Check estimated size
       let payloadSize = JSON.stringify(newProductPayload).length;
       if (payloadSize > 800000) {
@@ -589,6 +669,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       setImageUrl('');
       setAdditionalImages([]);
       setDeliveryFee('0');
+      setVariants([]);
       setSuccessMsg('Product published successfully & shareable link created!');
       setTimeout(() => setSuccessMsg(null), 5000);
       setActiveTab('products');
@@ -1252,6 +1333,83 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 <p className="text-[10px] text-slate-500 font-medium">
                   Specify custom delivery charges for this product. Set Rs. 0 to offer Free Shipping to buyers.
                 </p>
+              </div>
+
+              {/* Product Variants / Options Section (Optional) */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#FF5500]" />
+                      <span>Product Variants / Options (Optional)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Add options like Size, Color, Storage, or Style if your product has multiple variations. Adding variants is completely optional.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddVariantField}
+                    className="px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#FF5500] font-bold text-xs rounded-lg flex items-center gap-1 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Variant Option</span>
+                  </button>
+                </div>
+
+                {variants.length === 0 ? (
+                  <div className="p-3 bg-white border border-dashed border-slate-300 rounded-lg text-center text-xs text-slate-500 font-medium">
+                    No variants added. (This product will be listed as a single standard product).
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {variants.map((v, idx) => (
+                      <div key={v.id || idx} className="flex flex-col sm:flex-row items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-lg">
+                        <div className="flex-1 w-full">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Variant Title / Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Size M, Red Color, 128GB Storage, Pack of 2"
+                            value={v.name}
+                            onChange={(e) => handleUpdateVariantField(v.id, 'name', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <div className="w-full sm:w-32">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Price PKR (Optional)</label>
+                          <input
+                            type="number"
+                            placeholder="Custom price"
+                            value={v.price !== undefined ? v.price : ''}
+                            onChange={(e) => handleUpdateVariantField(v.id, 'price', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <div className="w-full sm:w-28">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Stock (Optional)</label>
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={v.stock !== undefined ? v.stock : ''}
+                            onChange={(e) => handleUpdateVariantField(v.id, 'stock', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveVariantField(v.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors mt-3 sm:mt-4 shrink-0 cursor-pointer"
+                          title="Remove Variant"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Product Picture Upload Section */}
@@ -2209,6 +2367,83 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Product Variants / Options Section in Edit Modal */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#FF5500]" />
+                      <span>Product Variants / Options (Optional)</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Manage product options like Size, Color, Storage, or Style.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddEditVariantField}
+                    className="px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-[#FF5500] font-bold text-xs rounded-lg flex items-center gap-1 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Variant Option</span>
+                  </button>
+                </div>
+
+                {editVariants.length === 0 ? (
+                  <div className="p-3 bg-white border border-dashed border-slate-300 rounded-lg text-center text-xs text-slate-500 font-medium">
+                    No variants added to this product.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {editVariants.map((v, idx) => (
+                      <div key={v.id || idx} className="flex flex-col sm:flex-row items-center gap-2 p-2.5 bg-white border border-slate-200 rounded-lg">
+                        <div className="flex-1 w-full">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Variant Title / Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Size M, Red Color, 128GB Storage, Pack of 2"
+                            value={v.name}
+                            onChange={(e) => handleUpdateEditVariantField(v.id, 'name', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <div className="w-full sm:w-32">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Price PKR (Optional)</label>
+                          <input
+                            type="number"
+                            placeholder="Custom price"
+                            value={v.price !== undefined ? v.price : ''}
+                            onChange={(e) => handleUpdateEditVariantField(v.id, 'price', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <div className="w-full sm:w-28">
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Stock (Optional)</label>
+                          <input
+                            type="number"
+                            placeholder="Qty"
+                            value={v.stock !== undefined ? v.stock : ''}
+                            onChange={(e) => handleUpdateEditVariantField(v.id, 'stock', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-xs font-semibold text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditVariantField(v.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors mt-3 sm:mt-4 shrink-0 cursor-pointer"
+                          title="Remove Variant"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

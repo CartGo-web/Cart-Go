@@ -15,8 +15,10 @@ import {
   Check,
   ExternalLink,
   ArrowLeft,
+  AlertCircle,
+  Layers,
 } from 'lucide-react';
-import { Product, Review } from '../types';
+import { Product, ProductVariant, Review } from '../types';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -27,7 +29,7 @@ import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from '../utils
 interface ProductDetailModalProps {
   product: Product | null;
   onClose: () => void;
-  onBuyNow: (product: Product, quantity: number) => void;
+  onBuyNow: (product: Product, quantity: number, selectedVariant?: ProductVariant) => void;
   onSelectStore?: (sellerId: string) => void;
 }
 
@@ -41,6 +43,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const { currentUser, userProfile } = useAuth();
   const [selectedImage, setSelectedImage] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [variantError, setVariantError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState('');
@@ -53,6 +57,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (product) {
       setSelectedImage(product.imageUrl);
       setQuantity(1);
+      setSelectedVariant(null);
+      setVariantError(null);
 
       // Fetch reviews from Firestore
       const q = query(collection(db, 'reviews'), where('productId', '==', product.id));
@@ -69,6 +75,28 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   }, [product]);
 
   if (!product) return null;
+
+  const hasVariants = product.variants && product.variants.length > 0;
+  const currentPrice = selectedVariant && typeof selectedVariant.price === 'number' ? selectedVariant.price : product.price;
+  const currentStock = selectedVariant && typeof selectedVariant.stock === 'number' ? selectedVariant.stock : product.stock;
+
+  const handleAddToCartClick = () => {
+    if (hasVariants && !selectedVariant) {
+      setVariantError('Please select a product variant (e.g. Size, Color, or Option) to add this item to cart.');
+      return;
+    }
+    setVariantError(null);
+    addToCart(product, quantity, selectedVariant || undefined);
+  };
+
+  const handleBuyNowClick = () => {
+    if (hasVariants && !selectedVariant) {
+      setVariantError('Please select a product variant (e.g. Size, Color, or Option) before buying.');
+      return;
+    }
+    setVariantError(null);
+    onBuyNow(product, quantity, selectedVariant || undefined);
+  };
 
   const inWishlist = isInWishlist(product.id);
 
@@ -282,7 +310,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
               {/* Price Block */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-baseline gap-3">
-                <span className="text-2xl font-black text-[#FF5500]">{formatPKR(product.price)}</span>
+                <span className="text-2xl font-black text-[#FF5500]">{formatPKR(currentPrice)}</span>
                 {product.originalPrice && (
                   <span className="text-sm text-slate-400 line-through">
                     {formatPKR(product.originalPrice)}
@@ -290,13 +318,74 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
                 {product.originalPrice && (
                   <span className="px-2 py-0.5 bg-rose-100 text-rose-600 text-xs font-bold rounded">
-                    -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
+                    -{Math.round(((product.originalPrice - currentPrice) / product.originalPrice) * 100)}%
                   </span>
                 )}
               </div>
 
               {/* Description */}
               <p className="text-xs text-slate-600 leading-relaxed">{product.description}</p>
+
+              {/* Product Variants (Compulsory when available) */}
+              {hasVariants && (
+                <div
+                  className={`p-3.5 rounded-xl border transition-all ${
+                    variantError
+                      ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-300'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#FF5500]" />
+                      <span>Select Variant / Option</span>
+                      <span className="text-[10px] bg-rose-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase">
+                        Compulsory
+                      </span>
+                    </label>
+                    {selectedVariant && (
+                      <span className="text-[11px] font-extrabold text-[#FF5500]">
+                        Selected: {selectedVariant.name}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {product.variants!.map((variant) => {
+                      const isSelected = selectedVariant?.id === variant.id;
+                      return (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedVariant(variant);
+                            setVariantError(null);
+                          }}
+                          className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-md scale-[1.02]'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-orange-300 hover:bg-orange-50/50'
+                          }`}
+                        >
+                          <span>{variant.name}</span>
+                          {typeof variant.price === 'number' && (
+                            <span className={`text-[10px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
+                              ({formatPKR(variant.price)})
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {variantError && (
+                    <div className="mt-2.5 p-2 bg-rose-100/80 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>{variantError}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Quantity Selector */}
               <div className="pt-2">
@@ -311,14 +400,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </button>
                     <span className="px-4 text-xs font-bold text-slate-800">{quantity}</span>
                     <button
-                      onClick={() => setQuantity((q) => Math.min(product.stock, q + 1))}
+                      onClick={() => setQuantity((q) => Math.min(currentStock, q + 1))}
                       className="p-2 hover:bg-slate-200 text-slate-600 transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   <span className="text-xs text-slate-500">
-                    Stock: <span className="font-bold text-slate-700">{product.stock} available</span>
+                    Stock: <span className="font-bold text-slate-700">{currentStock} available</span>
                   </span>
                 </div>
               </div>
@@ -347,16 +436,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="space-y-2 pt-4 border-t border-slate-100">
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => addToCart(product, quantity)}
-                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200"
+                  onClick={handleAddToCartClick}
+                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200 cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>Add to Cart</span>
                 </button>
 
                 <button
-                  onClick={() => onBuyNow(product, quantity)}
-                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md"
+                  onClick={handleBuyNowClick}
+                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md cursor-pointer"
                 >
                   <span>Buy Now</span>
                 </button>
@@ -479,7 +568,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 hidden sm:inline">Total:</span>
             <span className="text-base sm:text-lg font-black text-[#FF5500]">
-              {formatPKR(product.price * quantity)}
+              {formatPKR(currentPrice * quantity)}
             </span>
             {quantity > 1 && (
               <span className="text-[10px] text-slate-400">({quantity} items)</span>
@@ -488,16 +577,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
             <button
-              onClick={() => addToCart(product, quantity)}
-              className="py-2.5 px-3 sm:px-5 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-orange-200"
+              onClick={handleAddToCartClick}
+              className="py-2.5 px-3 sm:px-5 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-orange-200 cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4 shrink-0" />
               <span className="truncate">Add to Cart</span>
             </button>
 
             <button
-              onClick={() => onBuyNow(product, quantity)}
-              className="py-2.5 px-4 sm:px-6 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0"
+              onClick={handleBuyNowClick}
+              className="py-2.5 px-4 sm:px-6 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer"
             >
               <span>Buy Now</span>
             </button>

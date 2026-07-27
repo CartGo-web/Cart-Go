@@ -145,7 +145,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, onS
               <div className="text-sm font-extrabold text-[#FF5500]">
                 {formatPKR(product.price)}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1">
                 {product.originalPrice && (
                   <span className="text-[10px] text-slate-400 line-through">
                     {formatPKR(product.originalPrice)}
@@ -154,16 +154,25 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, onS
                 <span className={`text-[9px] font-bold px-1 rounded ${product.deliveryFee && product.deliveryFee > 0 ? 'text-slate-500 bg-slate-100' : 'text-emerald-700 bg-emerald-50'}`}>
                   {product.deliveryFee && product.deliveryFee > 0 ? `+${formatPKR(product.deliveryFee)} Shipping` : 'Free Delivery'}
                 </span>
+                {product.variants && product.variants.length > 0 && (
+                  <span className="text-[9px] font-black text-[#FF5500] bg-orange-100 px-1 rounded">
+                    {product.variants.length} Options
+                  </span>
+                )}
               </div>
             </div>
 
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                addToCart(product, 1);
+                if (product.variants && product.variants.length > 0) {
+                  onSelect(product);
+                } else {
+                  addToCart(product, 1);
+                }
               }}
-              className="p-2 bg-orange-50 hover:bg-[#FF5500] text-[#FF5500] hover:text-white rounded-lg transition-colors"
-              title="Add to Cart"
+              className="p-2 bg-orange-50 hover:bg-[#FF5500] text-[#FF5500] hover:text-white rounded-lg transition-colors cursor-pointer"
+              title={product.variants && product.variants.length > 0 ? "Select Variant & Options" : "Add to Cart"}
             >
               <ShoppingBag className="w-4 h-4" />
             </button>

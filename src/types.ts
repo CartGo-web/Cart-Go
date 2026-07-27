@@ -24,6 +24,13 @@ export interface SellerNotification {
   createdAt: string;
 }
 
+export interface ProductVariant {
+  id: string;
+  name: string; // e.g. "Red / Large", "64GB / Silver", "Size M", etc.
+  price?: number; // optional custom price for variant
+  stock?: number; // optional custom stock for variant
+}
+
 export interface Product {
   id: string;
   title: string;
@@ -41,12 +48,14 @@ export interface Product {
   salesCount: number;
   isFlashSale?: boolean;
   deliveryFee?: number;
+  variants?: ProductVariant[];
   createdAt: string;
 }
 
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedVariant?: ProductVariant;
 }
 
 export interface OrderItem {
@@ -57,6 +66,8 @@ export interface OrderItem {
   imageUrl: string;
   sellerId: string;
   deliveryFee?: number;
+  selectedVariant?: ProductVariant;
+  selectedVariantName?: string;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
