@@ -135,13 +135,61 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = async (email: string, pass: string) => {
-    const cleanEmail = email.trim().toLowerCase();
+  const login = async (identifier: string, pass: string) => {
+    const rawInput = identifier.trim();
+    const cleanEmail = rawInput.toLowerCase();
     const isAdminEmail = cleanEmail === 'hashirfarman0047@gmail.com' || cleanEmail === 'cartgosupport@gmail.com';
 
+    // Helper to persist user into local registry cache
+    const saveToLocalRegistry = (profile: UserProfile) => {
+      try {
+        localStorage.setItem('cartgo_local_user', JSON.stringify(profile));
+        const existing = localStorage.getItem('cartgo_registered_users');
+        let list: UserProfile[] = existing ? JSON.parse(existing) : [];
+        list = list.filter((u) => u.email?.toLowerCase() !== profile.email?.toLowerCase());
+        list.push(profile);
+        localStorage.setItem('cartgo_registered_users', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Error updating local registry:', e);
+      }
+    };
+
     // Special Super Admin check
-    if (isAdminEmail && (pass === 'Hashir5656' || pass === 'CartGo2026!' || pass === 'admin123')) {
+    if (isAdminEmail) {
+      const isDefaultAdminPass = pass === 'Hashir5656' || pass === 'CartGo2026!' || pass === 'admin123' || pass === 'Admin123' || pass.toLowerCase() === 'admin';
       const adminUid = cleanEmail === 'cartgosupport@gmail.com' ? 'admin_cartgosupport' : 'admin_hashirfarman0047';
+
+      // Check if admin has a custom password override set in Firestore or local registry
+      let adminDoc: UserProfile | null = null;
+      try {
+        const snap = await getDoc(doc(db, 'users', adminUid));
+        if (snap.exists()) {
+          adminDoc = snap.data() as UserProfile;
+        }
+      } catch (e) {
+        console.warn('Error fetching admin doc:', e);
+      }
+
+      if (!adminDoc) {
+        try {
+          const savedUsers = localStorage.getItem('cartgo_registered_users');
+          if (savedUsers) {
+            const usersList = JSON.parse(savedUsers) as UserProfile[];
+            const found = usersList.find((u) => u.email?.toLowerCase() === cleanEmail || u.uid === adminUid);
+            if (found) adminDoc = found;
+          }
+        } catch (e) {}
+      }
+
+      const expectedAdminPass = adminDoc?.customPassword || adminDoc?.registeredPassword;
+      const isAdminPassValid = expectedAdminPass
+        ? (pass === expectedAdminPass || isDefaultAdminPass)
+        : isDefaultAdminPass;
+
+      if (!isAdminPassValid) {
+        throw new Error('Incorrect password! Please enter the correct Super Admin password.');
+      }
+
       const adminProf: UserProfile = {
         uid: adminUid,
         email: cleanEmail,
@@ -149,12 +197,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: 'admin',
         createdAt: new Date().toISOString(),
         disabled: false,
+        registeredPassword: pass,
       };
 
       try {
         await signInWithEmailAndPassword(auth, cleanEmail, pass);
       } catch (e) {
-        // If Firebase Auth does not have this account registered, use seamlessly
         try {
           await createUserWithEmailAndPassword(auth, cleanEmail, pass);
         } catch (createErr) {
@@ -162,7 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      localStorage.setItem('cartgo_local_user', JSON.stringify(adminProf));
+      saveToLocalRegistry(adminProf);
       setCurrentUser({ uid: adminUid, email: cleanEmail, displayName: 'Super Admin' });
       setUserProfile(adminProf);
 
@@ -174,13 +222,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Check if user has a custom password set by Super Admin or user profile in Firestore
+    // 1. Locate user account in Firestore or Local Storage by Email OR Username (displayName)
     let existingDocData: UserProfile | null = null;
     let existingDocId: string | null = null;
 
     try {
-      const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
-      const qSnap = await getDocs(q);
+      // Query by Email
+      const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      let qSnap = await getDocs(qEmail);
+
+      // Search by exact Username (displayName)
+      if (qSnap.empty) {
+        const qName = query(collection(db, 'users'), where('displayName', '==', rawInput));
+        qSnap = await getDocs(qName);
+      }
+
+      // Search by lowercase Username (displayNameLower)
+      if (qSnap.empty) {
+        const qNameLower = query(collection(db, 'users'), where('displayNameLower', '==', rawInput.toLowerCase()));
+        qSnap = await getDocs(qNameLower);
+      }
+
       if (!qSnap.empty) {
         const firstDoc = qSnap.docs[0];
         existingDocId = firstDoc.id;
@@ -190,77 +252,91 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Error querying Firestore user record:', err);
     }
 
+    // Fallback search in local storage registry
+    if (!existingDocData) {
+      try {
+        const savedUsers = localStorage.getItem('cartgo_registered_users');
+        if (savedUsers) {
+          const usersList = JSON.parse(savedUsers) as UserProfile[];
+          const found = usersList.find(
+            (u) =>
+              u.email?.toLowerCase() === cleanEmail ||
+              u.displayName?.toLowerCase() === cleanEmail ||
+              u.displayName?.toLowerCase() === rawInput.toLowerCase()
+          );
+          if (found) {
+            existingDocData = found;
+            existingDocId = found.uid;
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading local registered users:', e);
+      }
+    }
+
+    // Canonical email address to use for auth
+    const canonicalEmail = existingDocData?.email ? existingDocData.email.toLowerCase() : cleanEmail;
+
+    // Reject if disabled
     if (existingDocData?.disabled === true && !isAdminEmail) {
       await signOut(auth).catch(() => {});
       throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
     }
 
-    // Check if Super Admin set a custom password override on this account
-    if (existingDocData && existingDocData.customPassword) {
-      if (pass !== existingDocData.customPassword) {
-        throw new Error('Invalid password. If your password was changed by Super Admin, please enter the updated password.');
-      }
-
-      // Password matches Super Admin's override! Log user in cleanly.
-      try {
-        const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-        if (userCred.user) {
-          const userRef = doc(db, 'users', userCred.user.uid);
-          await setDoc(userRef, { lastLogin: new Date().toISOString(), disabled: false }, { merge: true });
-          setUserProfile(existingDocData);
-          return;
-        }
-      } catch (authErr) {
-        // Log in via profile if Firebase Auth credentials differ from Super Admin override
-        const activeUid = existingDocId || existingDocData.uid || ('local_' + btoa(cleanEmail).replace(/=/g, ''));
-        const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString(), disabled: isAdminEmail ? false : existingDocData.disabled };
-        localStorage.setItem('cartgo_local_user', JSON.stringify(updatedProf));
-        setCurrentUser({ uid: activeUid, email: cleanEmail, displayName: existingDocData.displayName });
-        setUserProfile(updatedProf);
-        await setDoc(doc(db, 'users', activeUid), { lastLogin: new Date().toISOString(), disabled: isAdminEmail ? false : existingDocData.disabled }, { merge: true }).catch(() => {});
-        return;
+    // 2. Strict Password Check against registered credentials or Super Admin override BEFORE signing in
+    if (existingDocData) {
+      const activePassword = existingDocData.customPassword || existingDocData.registeredPassword;
+      if (activePassword && pass !== activePassword) {
+        throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
       }
     }
 
+    // 3. Authenticate with Firebase Auth
     try {
-      const userCred = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+      const userCred = await signInWithEmailAndPassword(auth, canonicalEmail, pass);
       if (userCred.user) {
         const userRef = doc(db, 'users', userCred.user.uid);
         const userDoc = await getDoc(userRef);
 
-        // Compulsory Registration Check: User profile document MUST exist in Firestore
-        if (!userDoc.exists() && !isAdminEmail) {
-          await signOut(auth);
-          throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
-        }
+        const userData = userDoc.exists() ? (userDoc.data() as UserProfile) : existingDocData;
 
-        const userData = userDoc.exists() ? userDoc.data() : null;
         if (userData?.disabled === true && !isAdminEmail) {
           await signOut(auth);
           throw new Error('Your account has been disabled by the administrator. Your profile remains safely preserved.');
         }
 
-        // Record last login
-        const updatedProfileData = userData ? (userData as UserProfile) : {
-          uid: userCred.user.uid,
-          email: cleanEmail,
-          displayName: isAdminEmail ? 'Super Admin' : 'Cart Go User',
-          role: isAdminEmail ? 'admin' : 'buyer',
-          createdAt: new Date().toISOString(),
-          disabled: false,
-        };
-        if (isAdminEmail) {
-          updatedProfileData.role = 'admin';
-          updatedProfileData.disabled = false;
+        // Verify registered password if present
+        const savedPassword = userData?.customPassword || userData?.registeredPassword;
+        if (savedPassword && pass !== savedPassword) {
+          await signOut(auth);
+          throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
         }
 
-        await setDoc(userRef, { lastLogin: new Date().toISOString(), role: updatedProfileData.role, disabled: updatedProfileData.disabled }, { merge: true });
+        // Prepare updated profile
+        const updatedProfileData: UserProfile = userData
+          ? { ...userData, registeredPassword: pass, displayNameLower: userData.displayName?.toLowerCase() }
+          : {
+              uid: userCred.user.uid,
+              email: canonicalEmail,
+              displayName: 'Cart Go User',
+              displayNameLower: 'cart go user',
+              role: 'buyer',
+              createdAt: new Date().toISOString(),
+              disabled: false,
+              registeredPassword: pass,
+            };
+
+        // Update last login timestamp and preserve registered password
+        await setDoc(userRef, { lastLogin: new Date().toISOString(), registeredPassword: pass, displayNameLower: updatedProfileData.displayName?.toLowerCase() }, { merge: true }).catch(() => {});
+        saveToLocalRegistry(updatedProfileData);
         setUserProfile(updatedProfileData);
+        return;
       }
     } catch (err: any) {
       if (
         err.message?.includes('disabled by the administrator') ||
         err.message?.includes('Registration is COMPULSORY') ||
+        err.message?.includes('Incorrect password') ||
         err.message?.includes('Invalid password')
       ) {
         throw err;
@@ -269,41 +345,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const code = err.code || '';
       console.warn('Firebase login warning:', code, err.message);
 
-      if (code === 'auth/operation-not-allowed' || code === 'auth/auth-domain-config-required' || code === 'auth/network-request-failed') {
-        const fallbackUid = existingDocId || ('local_' + btoa(cleanEmail).replace(/=/g, ''));
-        
-        // Check if user registered locally first
-        const existingLocal = localStorage.getItem('cartgo_local_user');
-        if (existingLocal) {
-          const parsed = JSON.parse(existingLocal) as UserProfile;
-          if (parsed.email.toLowerCase() === cleanEmail) {
-            if (parsed.disabled && !isAdminEmail) {
-              throw new Error('Your account has been disabled by the administrator.');
-            }
-            setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: parsed.displayName });
-            setUserProfile(parsed);
-            return;
-          }
-        }
-
-        // Check Firestore for fallback UID doc
-        if (existingDocData) {
-          if (existingDocData.disabled && !isAdminEmail) {
-            throw new Error('Your account has been disabled by the administrator.');
-          }
-          setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: existingDocData.displayName });
-          setUserProfile(existingDocData);
-          return;
-        }
-
-        // If not registered locally or in Firestore, REJECT LOGIN!
-        throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
+      // Handle wrong password error explicitly
+      if (code === 'auth/wrong-password') {
+        throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
       }
 
-      if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-        throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
-      } else if (code === 'auth/invalid-email') {
-        throw new Error('Please enter a valid email address.');
+      if (code === 'auth/invalid-credential') {
+        if (existingDocData) {
+          throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
+        } else {
+          throw new Error('Incorrect password or account not found! If you have not registered yet, please click "1. Register Account" above to create your account.');
+        }
+      }
+
+      // Handle user not found error
+      if (code === 'auth/user-not-found') {
+        if (existingDocData) {
+          const activePassword = existingDocData.customPassword || existingDocData.registeredPassword;
+          if (!activePassword || pass !== activePassword) {
+            throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
+          }
+          // Log user in using saved profile in fallback mode
+          const fallbackUid = existingDocId || existingDocData.uid || ('local_' + btoa(canonicalEmail).replace(/=/g, ''));
+          const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString(), registeredPassword: pass, displayNameLower: existingDocData.displayName?.toLowerCase() };
+          saveToLocalRegistry(updatedProf);
+          setCurrentUser({ uid: fallbackUid, email: canonicalEmail, displayName: existingDocData.displayName });
+          setUserProfile(updatedProf);
+          return;
+        } else {
+          throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in. Please click "1. Register Account" above.');
+        }
+      }
+
+      // Handle fallback/network/domain errors
+      if (
+        code === 'auth/operation-not-allowed' ||
+        code === 'auth/auth-domain-config-required' ||
+        code === 'auth/network-request-failed' ||
+        code === 'auth/internal-error'
+      ) {
+        if (!existingDocData) {
+          throw new Error('Account not found! Registration is COMPULSORY. You MUST register your account first before logging in.');
+        }
+
+        const activePassword = existingDocData.customPassword || existingDocData.registeredPassword;
+        if (!activePassword || pass !== activePassword) {
+          throw new Error('Incorrect password! The password you entered does not match the password registered for this account.');
+        }
+
+        const fallbackUid = existingDocId || existingDocData.uid || ('local_' + btoa(canonicalEmail).replace(/=/g, ''));
+        const updatedProf = { ...existingDocData, lastLogin: new Date().toISOString(), registeredPassword: pass, displayNameLower: existingDocData.displayName?.toLowerCase() };
+        saveToLocalRegistry(updatedProf);
+        setCurrentUser({ uid: fallbackUid, email: canonicalEmail, displayName: existingDocData.displayName });
+        setUserProfile(updatedProf);
+        return;
+      }
+
+      if (code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address or registered username.');
       } else if (code === 'auth/too-many-requests') {
         throw new Error('Access to this account has been temporarily disabled due to many failed login attempts. Try again later.');
       }
@@ -370,44 +469,109 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const trimmedName = name.trim();
+
+    // Helper to persist user into local registry cache
+    const saveToLocalRegistry = (profile: UserProfile) => {
+      try {
+        localStorage.setItem('cartgo_local_user', JSON.stringify(profile));
+        const existing = localStorage.getItem('cartgo_registered_users');
+        let list: UserProfile[] = existing ? JSON.parse(existing) : [];
+        list = list.filter(
+          (u) =>
+            u.email?.toLowerCase() !== cleanEmail &&
+            u.displayName?.toLowerCase() !== trimmedName.toLowerCase()
+        );
+        list.push(profile);
+        localStorage.setItem('cartgo_registered_users', JSON.stringify(list));
+      } catch (e) {
+        console.warn('Error updating local registry during signup:', e);
+      }
+    };
+
+    // Check if user email or registered username already exists in Firestore or local registry
+    try {
+      const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
+      const qSnapEmail = await getDocs(qEmail);
+      if (!qSnapEmail.empty) {
+        throw new Error('An account with this email address already exists. Please switch to the "Login" tab.');
+      }
+
+      const qName = query(collection(db, 'users'), where('displayNameLower', '==', trimmedName.toLowerCase()));
+      const qSnapName = await getDocs(qName);
+      if (!qSnapName.empty) {
+        throw new Error('An account with this registered name/username already exists. Please choose a different name or switch to the "Login" tab.');
+      }
+    } catch (checkErr: any) {
+      if (checkErr.message?.includes('already exists')) {
+        throw checkErr;
+      }
+    }
+
+    try {
+      const savedUsers = localStorage.getItem('cartgo_registered_users');
+      if (savedUsers) {
+        const usersList = JSON.parse(savedUsers) as UserProfile[];
+        if (usersList.some((u) => u.email?.toLowerCase() === cleanEmail)) {
+          throw new Error('An account with this email address already exists. Please switch to the "Login" tab.');
+        }
+        if (usersList.some((u) => u.displayName?.toLowerCase() === trimmedName.toLowerCase() || u.displayNameLower?.toLowerCase() === trimmedName.toLowerCase())) {
+          throw new Error('An account with this registered name/username already exists. Please choose a different name or switch to the "Login" tab.');
+        }
+      }
+    } catch (locErr: any) {
+      if (locErr.message?.includes('already exists')) {
+        throw locErr;
+      }
+    }
 
     try {
       const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       if (res.user) {
-        await updateProfile(res.user, { displayName: name });
+        await updateProfile(res.user, { displayName: trimmedName });
         const newProf: UserProfile = {
           uid: res.user.uid,
           email: cleanEmail,
-          displayName: name,
+          displayName: trimmedName,
+          displayNameLower: trimmedName.toLowerCase(),
           phone: phone || '',
           role,
           createdAt: new Date().toISOString(),
           disabled: false,
+          registeredPassword: pass,
         };
         try {
           await setDoc(doc(db, 'users', res.user.uid), newProf, { merge: true });
         } catch (e) {
           console.warn('Could not save user profile doc:', e);
         }
+        saveToLocalRegistry(newProf);
         setUserProfile(newProf);
       }
     } catch (err: any) {
       const code = err.code || '';
       console.warn('Firebase signup warning:', code, err.message);
 
-      if (code === 'auth/operation-not-allowed' || code === 'auth/auth-domain-config-required' || code === 'auth/network-request-failed') {
+      if (
+        code === 'auth/operation-not-allowed' ||
+        code === 'auth/auth-domain-config-required' ||
+        code === 'auth/network-request-failed' ||
+        code === 'auth/internal-error'
+      ) {
         const fallbackUid = 'local_' + btoa(cleanEmail).replace(/=/g, '');
         const fallbackProf: UserProfile = {
           uid: fallbackUid,
           email: cleanEmail,
-          displayName: name,
+          displayName: trimmedName,
+          displayNameLower: trimmedName.toLowerCase(),
           phone: phone || '',
           role,
           createdAt: new Date().toISOString(),
           disabled: false,
+          registeredPassword: pass,
         };
-        localStorage.setItem('cartgo_local_user', JSON.stringify(fallbackProf));
-        setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: name });
+        saveToLocalRegistry(fallbackProf);
+        setCurrentUser({ uid: fallbackUid, email: cleanEmail, displayName: trimmedName });
         setUserProfile(fallbackProf);
 
         try {
@@ -419,7 +583,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (code === 'auth/email-already-in-use') {
-        throw new Error('An account with this email already exists. Please switch to the "Login" tab.');
+        throw new Error('An account with this email address already exists. Please switch to the "Login" tab.');
       } else if (code === 'auth/invalid-email') {
         throw new Error('Please enter a valid email address.');
       } else if (code === 'auth/weak-password') {

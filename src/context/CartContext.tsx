@@ -1,12 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CartItem, Product, ProductVariant } from '../types';
+import { CartItem, Product } from '../types';
 
 interface CartContextType {
   cart: CartItem[];
   wishlist: Product[];
-  addToCart: (product: Product, quantity?: number, selectedVariant?: ProductVariant) => void;
-  removeFromCart: (productId: string, variantId?: string) => void;
-  updateQuantity: (productId: string, quantity: number, variantId?: string) => void;
+  addToCart: (
+    product: Product,
+    quantity?: number,
+    selectedVariants?: Record<string, string>,
+    selectedVariantText?: string
+  ) => void;
+  removeFromCart: (cartItemId: string) => void;
+  updateQuantity: (cartItemId: string, quantity: number) => void;
   clearCart: () => void;
   toggleWishlist: (product: Product) => void;
   isInWishlist: (productId: string) => boolean;
@@ -63,46 +68,56 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [wishlist]);
 
-  const addToCart = (product: Product, quantity = 1, selectedVariant?: ProductVariant) => {
+  const addToCart = (
+    product: Product,
+    quantity = 1,
+    selectedVariants?: Record<string, string>,
+    selectedVariantText?: string
+  ) => {
     setCart((prev) => {
+      const targetCartItemId = selectedVariantText
+        ? `${product.id}-${selectedVariantText}`
+        : product.id;
+
       const existing = prev.find(
-        (item) =>
-          item.product.id === product.id &&
-          ((!item.selectedVariant && !selectedVariant) || item.selectedVariant?.id === selectedVariant?.id)
+        (item) => (item.cartItemId || item.product.id) === targetCartItemId
       );
+
       if (existing) {
         return prev.map((item) =>
-          item.product.id === product.id &&
-          ((!item.selectedVariant && !selectedVariant) || item.selectedVariant?.id === selectedVariant?.id)
+          (item.cartItemId || item.product.id) === targetCartItemId
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
-      return [...prev, { product, quantity, selectedVariant }];
+
+      return [
+        ...prev,
+        {
+          cartItemId: targetCartItemId,
+          product,
+          quantity,
+          selectedVariants,
+          selectedVariantText,
+        },
+      ];
     });
   };
 
-  const removeFromCart = (productId: string, variantId?: string) => {
+  const removeFromCart = (cartItemId: string) => {
     setCart((prev) =>
-      prev.filter(
-        (item) =>
-          !(
-            item.product.id === productId &&
-            ((!item.selectedVariant && !variantId) || item.selectedVariant?.id === variantId)
-          )
-      )
+      prev.filter((item) => (item.cartItemId || item.product.id) !== cartItemId)
     );
   };
 
-  const updateQuantity = (productId: string, quantity: number, variantId?: string) => {
+  const updateQuantity = (cartItemId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId, variantId);
+      removeFromCart(cartItemId);
       return;
     }
     setCart((prev) =>
       prev.map((item) =>
-        item.product.id === productId &&
-        ((!item.selectedVariant && !variantId) || item.selectedVariant?.id === variantId)
+        (item.cartItemId || item.product.id) === cartItemId
           ? { ...item, quantity }
           : item
       )
@@ -163,10 +178,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAppliedCoupon(null);
   };
 
-  const subtotal = cart.reduce((acc, item) => {
-    const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
-    return acc + itemPrice * item.quantity;
-  }, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
 
   let discountAmount = 0;
   if (appliedCoupon === 'CARTGO20') {

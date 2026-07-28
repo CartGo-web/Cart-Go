@@ -16,9 +16,9 @@ import {
   ExternalLink,
   ArrowLeft,
   AlertCircle,
-  Layers,
+  Tag,
 } from 'lucide-react';
-import { Product, ProductVariant, Review } from '../types';
+import { Product, Review } from '../types';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -29,7 +29,12 @@ import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from '../utils
 interface ProductDetailModalProps {
   product: Product | null;
   onClose: () => void;
-  onBuyNow: (product: Product, quantity: number, selectedVariant?: ProductVariant) => void;
+  onBuyNow: (
+    product: Product,
+    quantity: number,
+    selectedVariants?: Record<string, string>,
+    selectedVariantText?: string
+  ) => void;
   onSelectStore?: (sellerId: string) => void;
 }
 
@@ -43,8 +48,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const { currentUser, userProfile } = useAuth();
   const [selectedImage, setSelectedImage] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
-  const [variantError, setVariantError] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [newRating, setNewRating] = useState(5);
   const [newComment, setNewComment] = useState('');
@@ -53,11 +56,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [productCopied, setProductCopied] = useState(false);
   const [storeCopied, setStoreCopied] = useState(false);
 
+  // Variant Selection State
+  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
+  const [variantError, setVariantError] = useState<string | null>(null);
+
   useEffect(() => {
     if (product) {
       setSelectedImage(product.imageUrl);
       setQuantity(1);
-      setSelectedVariant(null);
+      setSelectedVariants({});
       setVariantError(null);
 
       // Fetch reviews from Firestore
@@ -74,29 +81,38 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
   }, [product]);
 
+  // Variant Validation Helper
+  const validateAndGetVariants = (): { valid: boolean; selectedVariants?: Record<string, string>; text?: string } => {
+    if (product?.variants && product.variants.length > 0) {
+      for (const variant of product.variants) {
+        if (!selectedVariants[variant.name]) {
+          setVariantError(`Please select an option for "${variant.name}" before proceeding!`);
+          return { valid: false };
+        }
+      }
+    }
+    setVariantError(null);
+    const text = Object.entries(selectedVariants)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(' | ');
+    return { valid: true, selectedVariants, text };
+  };
+
+  const handleAddToCartWithValidation = () => {
+    if (!product) return;
+    const result = validateAndGetVariants();
+    if (!result.valid) return;
+    addToCart(product, quantity, result.selectedVariants, result.text);
+  };
+
+  const handleBuyNowWithValidation = () => {
+    if (!product) return;
+    const result = validateAndGetVariants();
+    if (!result.valid) return;
+    onBuyNow(product, quantity, result.selectedVariants, result.text);
+  };
+
   if (!product) return null;
-
-  const hasVariants = product.variants && product.variants.length > 0;
-  const currentPrice = selectedVariant && typeof selectedVariant.price === 'number' ? selectedVariant.price : product.price;
-  const currentStock = selectedVariant && typeof selectedVariant.stock === 'number' ? selectedVariant.stock : product.stock;
-
-  const handleAddToCartClick = () => {
-    if (hasVariants && !selectedVariant) {
-      setVariantError('Please select a product variant (e.g. Size, Color, or Option) to add this item to cart.');
-      return;
-    }
-    setVariantError(null);
-    addToCart(product, quantity, selectedVariant || undefined);
-  };
-
-  const handleBuyNowClick = () => {
-    if (hasVariants && !selectedVariant) {
-      setVariantError('Please select a product variant (e.g. Size, Color, or Option) before buying.');
-      return;
-    }
-    setVariantError(null);
-    onBuyNow(product, quantity, selectedVariant || undefined);
-  };
 
   const inWishlist = isInWishlist(product.id);
 
@@ -310,7 +326,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
               {/* Price Block */}
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-baseline gap-3">
-                <span className="text-2xl font-black text-[#FF5500]">{formatPKR(currentPrice)}</span>
+                <span className="text-2xl font-black text-[#FF5500]">{formatPKR(product.price)}</span>
                 {product.originalPrice && (
                   <span className="text-sm text-slate-400 line-through">
                     {formatPKR(product.originalPrice)}
@@ -318,7 +334,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 )}
                 {product.originalPrice && (
                   <span className="px-2 py-0.5 bg-rose-100 text-rose-600 text-xs font-bold rounded">
-                    -{Math.round(((product.originalPrice - currentPrice) / product.originalPrice) * 100)}%
+                    -{Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}%
                   </span>
                 )}
               </div>
@@ -326,64 +342,80 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               {/* Description */}
               <p className="text-xs text-slate-600 leading-relaxed">{product.description}</p>
 
-              {/* Product Variants (Compulsory when available) */}
-              {hasVariants && (
-                <div
-                  className={`p-3.5 rounded-xl border transition-all ${
-                    variantError
-                      ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-300'
-                      : 'bg-slate-50 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-[#FF5500]" />
-                      <span>Select Variant / Option</span>
-                      <span className="text-[10px] bg-rose-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase">
-                        Compulsory
-                      </span>
-                    </label>
-                    {selectedVariant && (
-                      <span className="text-[11px] font-extrabold text-[#FF5500]">
-                        Selected: {selectedVariant.name}
-                      </span>
-                    )}
+              {/* Product Variants (Compulsory for Buyers) */}
+              {product.variants && product.variants.length > 0 && (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-[#FF5500]" />
+                      <span>Select Required Variants</span>
+                    </span>
+                    <span className="text-[10px] font-extrabold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                      * Selection Compulsory
+                    </span>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {product.variants!.map((variant) => {
-                      const isSelected = selectedVariant?.id === variant.id;
-                      return (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedVariant(variant);
-                            setVariantError(null);
-                          }}
-                          className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer ${
-                            isSelected
-                              ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-md scale-[1.02]'
-                              : 'bg-white text-slate-700 border-slate-200 hover:border-orange-300 hover:bg-orange-50/50'
-                          }`}
-                        >
-                          <span>{variant.name}</span>
-                          {typeof variant.price === 'number' && (
-                            <span className={`text-[10px] ${isSelected ? 'text-amber-100' : 'text-slate-400'}`}>
-                              ({formatPKR(variant.price)})
+                  {product.variants.map((variant) => {
+                    const isMissing = variantError && !selectedVariants[variant.name];
+                    return (
+                      <div
+                        key={variant.id || variant.name}
+                        className={`p-3 rounded-xl border transition-all ${
+                          isMissing
+                            ? 'bg-rose-50/80 border-rose-300 ring-2 ring-rose-200'
+                            : 'bg-slate-50/80 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                            <span>{variant.name}:</span>
+                            {!selectedVariants[variant.name] && (
+                              <span className="text-[10px] text-rose-500 font-semibold">(Required)</span>
+                            )}
+                          </label>
+                          {selectedVariants[variant.name] && (
+                            <span className="text-xs font-extrabold text-[#FF5500] bg-orange-100/80 px-2 py-0.5 rounded-md">
+                              {selectedVariants[variant.name]}
                             </span>
                           )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                        </div>
 
-                  {variantError && (
-                    <div className="mt-2.5 p-2 bg-rose-100/80 border border-rose-200 rounded-lg text-xs font-bold text-rose-700 flex items-center gap-1.5">
-                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                      <span>{variantError}</span>
-                    </div>
-                  )}
+                        <div className="flex flex-wrap gap-2">
+                          {variant.options.map((option) => {
+                            const isSelected = selectedVariants[variant.name] === option;
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedVariants((prev) => ({
+                                    ...prev,
+                                    [variant.name]: option,
+                                  }));
+                                  setVariantError(null);
+                                }}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                  isSelected
+                                    ? 'bg-[#FF5500] text-white border-[#FF5500] shadow-sm'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:border-orange-300 hover:bg-orange-50'
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Compulsory Variant Error Warning Banner */}
+              {variantError && (
+                <div className="p-3 bg-rose-100 border border-rose-300 text-rose-800 font-bold text-xs rounded-xl flex items-center gap-2 animate-in fade-in duration-200">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{variantError}</span>
                 </div>
               )}
 
@@ -400,14 +432,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </button>
                     <span className="px-4 text-xs font-bold text-slate-800">{quantity}</span>
                     <button
-                      onClick={() => setQuantity((q) => Math.min(currentStock, q + 1))}
+                      onClick={() => setQuantity((q) => Math.min(product.stock, q + 1))}
                       className="p-2 hover:bg-slate-200 text-slate-600 transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   <span className="text-xs text-slate-500">
-                    Stock: <span className="font-bold text-slate-700">{currentStock} available</span>
+                    Stock: <span className="font-bold text-slate-700">{product.stock} available</span>
                   </span>
                 </div>
               </div>
@@ -436,16 +468,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="space-y-2 pt-4 border-t border-slate-100">
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={handleAddToCartClick}
-                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200 cursor-pointer"
+                  onClick={handleAddToCartWithValidation}
+                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200"
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>Add to Cart</span>
                 </button>
 
                 <button
-                  onClick={handleBuyNowClick}
-                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md cursor-pointer"
+                  onClick={handleBuyNowWithValidation}
+                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md"
                 >
                   <span>Buy Now</span>
                 </button>
@@ -568,7 +600,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500 hidden sm:inline">Total:</span>
             <span className="text-base sm:text-lg font-black text-[#FF5500]">
-              {formatPKR(currentPrice * quantity)}
+              {formatPKR(product.price * quantity)}
             </span>
             {quantity > 1 && (
               <span className="text-[10px] text-slate-400">({quantity} items)</span>
@@ -577,16 +609,16 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-end">
             <button
-              onClick={handleAddToCartClick}
-              className="py-2.5 px-3 sm:px-5 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-orange-200 cursor-pointer"
+              onClick={() => addToCart(product, quantity)}
+              className="py-2.5 px-3 sm:px-5 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-orange-200"
             >
               <ShoppingBag className="w-4 h-4 shrink-0" />
               <span className="truncate">Add to Cart</span>
             </button>
 
             <button
-              onClick={handleBuyNowClick}
-              className="py-2.5 px-4 sm:px-6 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer"
+              onClick={() => onBuyNow(product, quantity)}
+              className="py-2.5 px-4 sm:px-6 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md shrink-0"
             >
               <span>Buy Now</span>
             </button>

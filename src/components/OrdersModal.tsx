@@ -126,6 +126,11 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({ isOpen, onClose }) => 
                           />
                           <div>
                             <span className="font-semibold text-slate-800 line-clamp-1">{item.title}</span>
+                            {item.selectedVariantText && (
+                              <div className="text-[10px] font-bold text-[#FF5500]">
+                                Variant: {item.selectedVariantText}
+                              </div>
+                            )}
                             <span className="text-slate-500 text-[11px]">Qty: {item.quantity}</span>
                           </div>
                         </div>

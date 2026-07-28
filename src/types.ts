@@ -4,6 +4,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  displayNameLower?: string;
   role: UserRole;
   avatarUrl?: string;
   phone?: string;
@@ -11,6 +12,7 @@ export interface UserProfile {
   createdAt?: string;
   lastLogin?: string;
   disabled?: boolean;
+  registeredPassword?: string;
   customPassword?: string;
   passwordUpdatedAt?: string;
 }
@@ -26,9 +28,8 @@ export interface SellerNotification {
 
 export interface ProductVariant {
   id: string;
-  name: string; // e.g. "Red / Large", "64GB / Silver", "Size M", etc.
-  price?: number; // optional custom price for variant
-  stock?: number; // optional custom stock for variant
+  name: string; // Variant type e.g. "Size", "Color", "Storage", "Flavor", "Style", "Pack"
+  options: string[]; // Options array e.g. ["Small", "Medium", "Large", "XL"]
 }
 
 export interface Product {
@@ -40,6 +41,7 @@ export interface Product {
   category: string;
   imageUrl: string;
   additionalImages?: string[];
+  variants?: ProductVariant[];
   stock: number;
   sellerId: string;
   sellerName: string;
@@ -48,14 +50,15 @@ export interface Product {
   salesCount: number;
   isFlashSale?: boolean;
   deliveryFee?: number;
-  variants?: ProductVariant[];
   createdAt: string;
 }
 
 export interface CartItem {
+  cartItemId?: string;
   product: Product;
   quantity: number;
-  selectedVariant?: ProductVariant;
+  selectedVariants?: Record<string, string>;
+  selectedVariantText?: string;
 }
 
 export interface OrderItem {
@@ -66,8 +69,8 @@ export interface OrderItem {
   imageUrl: string;
   sellerId: string;
   deliveryFee?: number;
-  selectedVariant?: ProductVariant;
-  selectedVariantName?: string;
+  selectedVariants?: Record<string, string>;
+  selectedVariantText?: string;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';

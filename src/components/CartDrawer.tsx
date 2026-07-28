@@ -103,10 +103,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
             ) : (
               cart.map((item) => {
-                const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
+                const itemId = item.cartItemId || item.product.id;
                 return (
                   <div
-                    key={`${item.product.id}-${item.selectedVariant?.id || 'base'}`}
+                    key={itemId}
                     className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex gap-3 items-center"
                   >
                     <img
@@ -120,16 +120,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         {item.product.title}
                       </h4>
 
-                      {item.selectedVariant && (
-                        <div className="flex items-center gap-1">
-                          <span className="inline-block px-1.5 py-0.5 bg-orange-100 text-[#FF5500] text-[10px] font-bold rounded">
-                            Option: {item.selectedVariant.name}
-                          </span>
+                      {/* Display Selected Variants */}
+                      {item.selectedVariantText && (
+                        <div className="text-[10px] font-bold text-[#FF5500] bg-orange-100/80 px-2 py-0.5 rounded-md inline-block max-w-full truncate">
+                          Variant: {item.selectedVariantText}
                         </div>
                       )}
 
                       <p className="text-xs font-bold text-[#F57224]">
-                        {formatPKR(itemPrice)}{' '}
+                        {formatPKR(item.product.price)}{' '}
                         <span className="text-[10px] font-medium text-slate-500">
                           ({item.product.deliveryFee && item.product.deliveryFee > 0 ? `+${formatPKR(item.product.deliveryFee)} Delivery` : 'Free Delivery'})
                         </span>
@@ -139,7 +138,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       <div className="flex items-center gap-2 pt-1">
                         <div className="flex items-center border border-slate-200 rounded-md bg-white">
                           <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.selectedVariant?.id)}
+                            onClick={() => updateQuantity(itemId, item.quantity - 1)}
                             className="p-1 hover:bg-slate-100 text-slate-600"
                           >
                             <Minus className="w-3 h-3" />
@@ -148,7 +147,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             {item.quantity}
                           </span>
                           <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.selectedVariant?.id)}
+                            onClick={() => updateQuantity(itemId, item.quantity + 1)}
                             className="p-1 hover:bg-slate-100 text-slate-600"
                           >
                             <Plus className="w-3 h-3" />
@@ -156,7 +155,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         </div>
 
                         <button
-                          onClick={() => removeFromCart(item.product.id, item.selectedVariant?.id)}
+                          onClick={() => removeFromCart(itemId)}
                           className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
                           title="Remove item"
                         >
@@ -166,7 +165,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     </div>
 
                     <div className="text-right font-extrabold text-xs text-slate-900">
-                      {formatPKR(itemPrice * item.quantity)}
+                      {formatPKR(item.product.price * item.quantity)}
                     </div>
                   </div>
                 );

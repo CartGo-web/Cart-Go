@@ -65,24 +65,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setError(null);
 
     try {
-      const orderItems = cart.map((item) => {
-        const itemPrice = item.selectedVariant?.price !== undefined ? item.selectedVariant.price : item.product.price;
-        return {
-          productId: item.product.id,
-          title: item.product.title,
-          price: itemPrice,
-          selectedVariant: item.selectedVariant ? {
-            id: item.selectedVariant.id,
-            name: item.selectedVariant.name,
-            price: item.selectedVariant.price,
-            stock: item.selectedVariant.stock,
-          } : undefined,
-          quantity: item.quantity,
-          imageUrl: item.product.imageUrl,
-          sellerId: item.product.sellerId,
-          deliveryFee: item.product.deliveryFee || 0,
-        };
-      });
+      const orderItems = cart.map((item) => ({
+        productId: item.product.id,
+        title: item.product.title,
+        price: item.product.price,
+        quantity: item.quantity,
+        imageUrl: item.product.imageUrl,
+        sellerId: item.product.sellerId,
+        deliveryFee: item.product.deliveryFee || 0,
+        selectedVariants: item.selectedVariants || null,
+        selectedVariantText: item.selectedVariantText || null,
+      }));
 
       const newOrder = {
         buyerId: currentUser.uid,

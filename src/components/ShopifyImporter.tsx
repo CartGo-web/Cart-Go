@@ -2,14 +2,18 @@ import React, { useState } from 'react';
 import {
   Store,
   Upload,
+  Link as LinkIcon,
   CheckCircle2,
   AlertCircle,
   Loader2,
   PackageCheck,
   Sparkles,
+  ArrowRight,
   Key,
   FileSpreadsheet,
+  RefreshCw,
   Check,
+  FileText,
 } from 'lucide-react';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -55,11 +59,18 @@ interface ShopifyImporterProps {
   onSuccess: (count: number) => void;
 }
 
+const DEMO_SHOPIFY_URLS = [
+  'https://kith.com',
+  'https://www.gymshark.com',
+  'https://www.allbirds.com',
+  'https://shop.fentybeauty.com',
+];
+
 export const ShopifyImporter: React.FC<ShopifyImporterProps> = ({ onSuccess }) => {
   const { currentUser, userProfile } = useAuth();
-  const [importMethod, setImportMethod] = useState<'token' | 'csv'>('token');
+  const [importMethod, setImportMethod] = useState<'url' | 'token' | 'csv'>('url');
 
-  // Token Import State
+  // URL Import State
   const [storeUrl, setStoreUrl] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -109,6 +120,115 @@ export const ShopifyImporter: React.FC<ShopifyImporterProps> = ({ onSuccess }) =
     div.innerHTML = html;
     const text = div.textContent || div.innerText || '';
     return text.trim().slice(0, 500) || 'Imported directly from Shopify store catalog.';
+  };
+
+  // 1-Click Fetch Products from Shopify Store URL
+  const fetchFromShopifyUrl = async (urlInput: string) => {
+    setError(null);
+    setLoading(true);
+    setParsedProducts([]);
+    setImportCompletedCount(null);
+
+    let cleanUrl = urlInput.trim();
+    if (!cleanUrl) {
+      setError('Please enter a valid Shopify Store URL or domain (e.g., brand.myshopify.com).');
+      setLoading(false);
+      return;
+    }
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+
+    try {
+      // Remove trailing slashes
+      cleanUrl = cleanUrl.replace(/\/+$/, '');
+      const endpoint = `${cleanUrl}/products.json?limit=250`;
+
+      let productsRaw: ShopifyProduct[] = [];
+
+      // Strategy 1: Direct fetch
+      try {
+        const response = await fetch(endpoint);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.products)) {
+            productsRaw = data.products;
+          }
+        }
+      } catch (directErr) {
+        console.warn('Direct fetch failed, trying CORS proxy...', directErr);
+      }
+
+      // Strategy 2: If direct fetch failed or was blocked by CORS, try CORS proxy fallback
+      if (productsRaw.length === 0) {
+        const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(endpoint)}`;
+        const proxyResp = await fetch(proxyUrl);
+        if (proxyResp.ok) {
+          const data = await proxyResp.json();
+          if (data && Array.isArray(data.products)) {
+            productsRaw = data.products;
+          }
+        } else {
+          // Fallback Strategy 3: AllOrigins proxy
+          const fallbackProxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(endpoint)}`;
+          const fbResp = await fetch(fallbackProxy);
+          if (fbResp.ok) {
+            const data = await fbResp.json();
+            if (data && Array.isArray(data.products)) {
+              productsRaw = data.products;
+            }
+          }
+        }
+      }
+
+      if (productsRaw.length === 0) {
+        throw new Error('No products found or the store endpoint is protected. You can try uploading a Shopify CSV export file or using an Admin Access Token.');
+      }
+
+      // Convert raw Shopify products to CartGo format
+      const mappedProducts: ParsedImportProduct[] = productsRaw.map((sp) => {
+        const mainVariant = sp.variants && sp.variants.length > 0 ? sp.variants[0] : null;
+        const priceNum = mainVariant ? parseFloat(String(mainVariant.price)) : 1000;
+        const origPriceNum = mainVariant && mainVariant.compare_at_price ? parseFloat(String(mainVariant.compare_at_price)) : priceNum * 1.25;
+
+        // Extract images
+        let mainImg = 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+        const addImgs: string[] = [];
+
+        if (sp.images && sp.images.length > 0) {
+          mainImg = sp.images[0].src;
+          sp.images.slice(1, 6).forEach((img) => addImgs.push(img.src));
+        } else if (sp.image && sp.image.src) {
+          mainImg = sp.image.src;
+        }
+
+        const stockNum = mainVariant && typeof mainVariant.inventory_quantity === 'number' && mainVariant.inventory_quantity > 0
+          ? mainVariant.inventory_quantity
+          : 25;
+
+        return {
+          title: sp.title,
+          description: cleanDescription(sp.body_html),
+          price: Math.round(priceNum) || 999,
+          originalPrice: Math.round(origPriceNum) || Math.round(priceNum * 1.25),
+          category: mapShopifyCategory(sp.product_type, sp.tags),
+          imageUrl: mainImg,
+          additionalImages: addImgs,
+          stock: stockNum,
+          deliveryFee: 0,
+          selected: true,
+          vendor: sp.vendor,
+        };
+      });
+
+      setParsedProducts(mappedProducts);
+    } catch (err: any) {
+      console.error('Shopify Import Error:', err);
+      setError(err.message || 'Failed to connect to Shopify store. Check the URL and try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 1-Click Admin Access Token Fetch
@@ -377,7 +497,20 @@ export const ShopifyImporter: React.FC<ShopifyImporterProps> = ({ onSuccess }) =
       </div>
 
       {/* Import Method Toggle */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 text-xs font-bold">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200 text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setImportMethod('url')}
+          className={`py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            importMethod === 'url'
+              ? 'bg-white text-[#008060] shadow-xs border border-slate-200 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <LinkIcon className="w-4 h-4 text-[#008060]" />
+          <span>1-Click Store URL</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setImportMethod('token')}
@@ -429,7 +562,72 @@ export const ShopifyImporter: React.FC<ShopifyImporterProps> = ({ onSuccess }) =
         </div>
       )}
 
-      {/* Method 1: Admin Access Token */}
+      {/* Method 1: Store URL */}
+      {importMethod === 'url' && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="block text-xs font-extrabold text-slate-800">
+              Shopify Store Web Address / Domain Name
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <LinkIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  placeholder="e.g. kith.com or my-store.myshopify.com"
+                  value={storeUrl}
+                  onChange={(e) => setStoreUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchFromShopifyUrl(storeUrl)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#008060]"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => fetchFromShopifyUrl(storeUrl)}
+                className="px-5 py-2.5 bg-[#008060] hover:bg-[#006048] disabled:bg-slate-300 text-white text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm shrink-0 active:scale-95 cursor-pointer"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Connecting Store...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Fetch Store Data</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Preset Demo Stores Quick-Click */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#008060]" />
+              <span>Or click a sample live Shopify store URL to test 1-click import:</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {DEMO_SHOPIFY_URLS.map((demoUrl) => (
+                <button
+                  key={demoUrl}
+                  type="button"
+                  onClick={() => {
+                    setStoreUrl(demoUrl);
+                    fetchFromShopifyUrl(demoUrl);
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-50 border border-slate-300 hover:border-emerald-400 text-slate-800 text-[11px] font-bold rounded-lg transition-all"
+                >
+                  {demoUrl.replace('https://', '')}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Method 2: Admin Access Token */}
       {importMethod === 'token' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

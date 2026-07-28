@@ -190,14 +190,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email Address
+                {isLoginTab ? 'Email Address or Registered Name' : 'Email Address'}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
                 <input
-                  type="email"
+                  type={isLoginTab ? 'text' : 'email'}
                   required
-                  placeholder="name@example.com"
+                  placeholder={isLoginTab ? 'name@example.com or Full Name' : 'name@example.com'}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF5500]"
