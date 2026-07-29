@@ -42,6 +42,8 @@ export interface Product {
   imageUrl: string;
   additionalImages?: string[];
   variants?: ProductVariant[];
+  tags?: string[];
+  videoUrl?: string;
   stock: number;
   sellerId: string;
   sellerName: string;

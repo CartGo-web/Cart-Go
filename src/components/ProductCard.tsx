@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Star, Heart, ShoppingBag, ShieldCheck, Share2, Check, Store } from 'lucide-react';
+import { Star, Heart, ShoppingBag, ShieldCheck, Share2, Check, Store, Video } from 'lucide-react';
 import { Product } from '../types';
 import { useCart } from '../context/CartContext';
 import { formatPKR } from '../utils/formatters';
@@ -91,6 +91,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, onS
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
         />
+        {product.videoUrl && (
+          <span className="absolute top-2 left-2 bg-slate-900/90 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs border border-white/20 shadow-xs">
+            <Video className="w-3 h-3 text-[#FF5500] fill-[#FF5500]/20 animate-pulse" />
+            <span>Video Demo</span>
+          </span>
+        )}
         {product.stock <= 5 && product.stock > 0 && (
           <span className="absolute bottom-2 left-2 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded">
             Only {product.stock} left!
@@ -126,6 +132,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelect, onS
           >
             {product.title}
           </h3>
+
+          {/* Tags preview */}
+          {product.tags && product.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {product.tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="text-[9px] font-extrabold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100/80">
+                  #{tag}
+                </span>
+              ))}
+              {product.tags.length > 3 && (
+                <span className="text-[9px] text-slate-400 font-bold self-center">+{product.tags.length - 3}</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

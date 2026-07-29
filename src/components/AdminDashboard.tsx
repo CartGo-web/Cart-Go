@@ -680,28 +680,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowDeleteAllUsersModal(true)}
-              disabled={resettingData}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              title="Delete all user accounts from Firebase except Super Admin"
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                Delete All Users Except Admin
-              </span>
-            </button>
-            <button
-              onClick={() => setShowFactoryResetModal(true)}
-              disabled={resettingData}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-              title="Delete all website data except Super Admin"
-            >
-              <Trash2 className={`w-3.5 h-3.5 ${resettingData ? 'animate-bounce' : ''}`} />
-              <span className="hidden sm:inline">
-                {resettingData ? 'Wiping Database...' : 'Wipe All Website Data'}
-              </span>
-            </button>
-            <button
               onClick={fetchAdminData}
               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors text-xs font-medium flex items-center gap-1"
               title="Refresh Data"
@@ -1391,108 +1369,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>{isDeletingUser ? 'Deleting Account...' : 'Permanently Delete User'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Delete All Users Modal */}
-      {showDeleteAllUsersModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-amber-600 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-amber-200" />
-                <h3 className="font-extrabold text-sm">Delete All Registered Accounts</h3>
-              </div>
-              <button
-                onClick={() => setShowDeleteAllUsersModal(false)}
-                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs">
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Bulk User Deletion Warning</span>
-                </div>
-                <p className="text-[11px] leading-relaxed font-normal">
-                  This will permanently delete all registered user and seller profiles from Firebase, except Super Admin accounts (hashirfarman0047@gmail.com / cartgosupport@gmail.com).
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteAllUsersModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={resettingData}
-                  onClick={executeDeleteAllUsers}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>{resettingData ? 'Deleting Accounts...' : 'Delete All Accounts'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Custom Factory Reset Modal */}
-      {showFactoryResetModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="bg-rose-700 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-300 animate-pulse" />
-                <h3 className="font-extrabold text-sm">Wipe All Database Data</h3>
-              </div>
-              <button
-                onClick={() => setShowFactoryResetModal(false)}
-                className="p-1 hover:bg-white/10 rounded-lg transition-colors text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs">
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 space-y-2">
-                <p className="font-bold">This complete factory reset will permanently wipe:</p>
-                <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-rose-800 font-medium">
-                  <li>All user & seller accounts (except Super Admin)</li>
-                  <li>All listed products & catalog</li>
-                  <li>All customer orders & revenue analytics</li>
-                  <li>All notification announcements</li>
-                </ul>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFactoryResetModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={resettingData}
-                  onClick={executeFactoryReset}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{resettingData ? 'Wiping Database...' : 'Wipe All Data Now'}</span>
                 </button>
               </div>
             </div>

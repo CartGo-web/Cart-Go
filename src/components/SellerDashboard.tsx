@@ -28,11 +28,187 @@ import {
   Truck,
   HelpCircle,
   Info,
+  Tag,
 } from 'lucide-react';
 import { ShopifyImporter } from './ShopifyImporter';
+import { ProductTagManager } from './ProductTagManager';
+import { ProductVideoManager } from './ProductVideoManager';
 import { useAuth } from '../context/AuthContext';
-import { Product, Order, OrderStatus, SellerNotification } from '../types';
+import { Product, Order, OrderStatus, SellerNotification, ProductVariant } from '../types';
 import { CATEGORIES } from '../data/categories';
+
+const ProductVariantManager: React.FC<{
+  variants: ProductVariant[];
+  onChange: (variants: ProductVariant[]) => void;
+}> = ({ variants, onChange }) => {
+  const [newOptionTexts, setNewOptionTexts] = useState<Record<string, string>>({});
+
+  const handleAddGroup = (defaultName = '') => {
+    const newGroup: ProductVariant = {
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
+      name: defaultName,
+      options: [],
+    };
+    onChange([...variants, newGroup]);
+  };
+
+  const handleRemoveGroup = (id: string) => {
+    onChange(variants.filter((v) => v.id !== id));
+  };
+
+  const handleNameChange = (id: string, name: string) => {
+    onChange(variants.map((v) => (v.id === id ? { ...v, name } : v)));
+  };
+
+  const handleAddOption = (groupId: string) => {
+    const text = (newOptionTexts[groupId] || '').trim();
+    if (!text) return;
+    onChange(
+      variants.map((v) => {
+        if (v.id === groupId) {
+          if (!v.options.includes(text)) {
+            return { ...v, options: [...v.options, text] };
+          }
+        }
+        return v;
+      })
+    );
+    setNewOptionTexts((prev) => ({ ...prev, [groupId]: '' }));
+  };
+
+  const handleRemoveOption = (groupId: string, optionIndex: number) => {
+    onChange(
+      variants.map((v) => {
+        if (v.id === groupId) {
+          return {
+            ...v,
+            options: v.options.filter((_, idx) => idx !== optionIndex),
+          };
+        }
+        return v;
+      })
+    );
+  };
+
+  return (
+    <div className="p-4 bg-orange-50/60 border border-orange-200 rounded-xl space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <Tag className="w-4 h-4 text-[#FF5500]" />
+            <span>Product Variants & Options (Optional)</span>
+          </label>
+          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+            Sellers can add multiple variant groups (e.g. Color, Size, Storage) with more than two variants. If added, buyers must select a variant before purchasing.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleAddGroup('')}
+          className="px-3 py-1.5 bg-[#FF5500] hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 shadow-xs shrink-0 cursor-pointer"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>+ Add Variant Group</span>
+        </button>
+      </div>
+
+      {/* Quick Preset Group Adders */}
+      {variants.length === 0 && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <span className="text-[10px] font-bold text-slate-500">Quick Presets:</span>
+          {['Color', 'Size', 'Storage', 'Style', 'Pack / Quantity'].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => handleAddGroup(preset)}
+              className="px-2.5 py-1 bg-white hover:bg-orange-100 border border-slate-200 hover:border-orange-300 text-slate-700 hover:text-[#FF5500] text-[11px] font-bold rounded-md transition-colors cursor-pointer"
+            >
+              + Add {preset}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Render Variant Groups */}
+      <div className="space-y-3 pt-1">
+        {variants.map((v) => (
+          <div
+            key={v.id}
+            className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-xs relative"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Variant Group Name (e.g. Color, Size, Storage)"
+                value={v.name}
+                onChange={(e) => handleNameChange(v.id, e.target.value)}
+                className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+              />
+              <button
+                type="button"
+                onClick={() => handleRemoveGroup(v.id)}
+                className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                title="Remove variant group"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Options list */}
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {v.options.map((opt, optIdx) => (
+                <span
+                  key={optIdx}
+                  className="px-2.5 py-1 bg-orange-100 text-[#FF5500] font-bold text-xs rounded-md flex items-center gap-1.5 border border-orange-200"
+                >
+                  <span>{opt}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveOption(v.id, optIdx)}
+                    className="hover:text-rose-700 text-orange-400 font-extrabold cursor-pointer"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              {/* Input for adding new option */}
+              <div className="flex items-center gap-1 flex-1 min-w-[200px]">
+                <input
+                  type="text"
+                  placeholder="Add option (e.g. Red, Blue, Small, XL, 128GB)..."
+                  value={newOptionTexts[v.id] || ''}
+                  onChange={(e) =>
+                    setNewOptionTexts((prev) => ({ ...prev, [v.id]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddOption(v.id);
+                    }
+                  }}
+                  className="flex-1 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FF5500]"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddOption(v.id)}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+            {v.options.length === 0 && (
+              <p className="text-[10px] text-amber-600 italic font-medium">
+                Type an option name above and press Enter or click "+ Add" (sellers can add more than two variants).
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 import { db } from '../lib/firebase';
 import { formatPKR } from '../utils/formatters';
 import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from '../utils/share';
@@ -80,6 +256,9 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [category, setCategory] = useState(CATEGORIES[0].id);
   const [imageUrl, setImageUrl] = useState('');
   const [additionalImages, setAdditionalImages] = useState<string[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [videoUrl, setVideoUrl] = useState('');
   const [stock, setStock] = useState('20');
   const [isFlashSale, setIsFlashSale] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState('0');
@@ -111,6 +290,9 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   const [editDescription, setEditDescription] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editAdditionalImages, setEditAdditionalImages] = useState<string[]>([]);
+  const [editVariants, setEditVariants] = useState<ProductVariant[]>([]);
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [editVideoUrl, setEditVideoUrl] = useState('');
   const [editIsFlashSale, setEditIsFlashSale] = useState(false);
   const [editDeliveryFee, setEditDeliveryFee] = useState('0');
   const [submittingEdit, setSubmittingEdit] = useState(false);
@@ -192,8 +374,19 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     setEditDescription(p.description || '');
     setEditImageUrl(p.imageUrl || '');
     setEditAdditionalImages(p.additionalImages || []);
+    setEditVariants(
+      p.variants
+        ? p.variants.map((v) => ({
+            id: v.id || Math.random().toString(),
+            name: v.name,
+            options: [...(v.options || [])],
+          }))
+        : []
+    );
     setEditIsFlashSale(!!p.isFlashSale);
     setEditDeliveryFee(p.deliveryFee !== undefined ? p.deliveryFee.toString() : '0');
+    setEditTags(p.tags || []);
+    setEditVideoUrl(p.videoUrl || '');
   };
 
   const handleSaveEditedProduct = async (e: React.FormEvent) => {
@@ -232,6 +425,14 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       const parsedStock = parseInt(editStock, 10);
       const parsedOriginal = editOriginalPrice ? parseFloat(editOriginalPrice) : null;
 
+      const validVariants = editVariants
+        .filter((v) => v.name.trim() && v.options && v.options.length > 0)
+        .map((v) => ({
+          id: v.id || Date.now().toString() + Math.random().toString(36).substring(2, 5),
+          name: v.name.trim(),
+          options: v.options.map((o) => o.trim()).filter(Boolean),
+        }));
+
       const updatedPayload: Record<string, any> = {
         title: editTitle.trim(),
         description: editDescription.trim(),
@@ -242,6 +443,9 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         isFlashSale: editIsFlashSale,
         deliveryFee: parseFloat(editDeliveryFee) || 0,
         additionalImages: finalGallery,
+        variants: validVariants,
+        tags: editTags,
+        videoUrl: editVideoUrl.trim() || undefined,
         sellerName: userProfile?.displayName || storeNameInput || editingProduct.sellerName,
         sellerPhone: sellerPhone || storePhoneInput || editingProduct.sellerPhone,
         updatedAt: new Date().toISOString(),
@@ -253,7 +457,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         updatedPayload.originalPrice = null;
       }
 
-      await updateDoc(doc(db, 'products', editingProduct.id), updatedPayload);
+      const finalPayload = await optimizeProductPayloadSize(updatedPayload);
+      await updateDoc(doc(db, 'products', editingProduct.id), finalPayload);
 
       setSuccessMsg(`"${editTitle.trim()}" updated successfully!`);
       setEditingProduct(null);
@@ -310,7 +515,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const compressImageFile = (file: File, maxSide = 800, quality = 0.7): Promise<string> => {
+  const compressImageFile = (file: File, maxSide = 640, quality = 0.65): Promise<string> => {
     return new Promise((resolve) => {
       if (!file.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -360,7 +565,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     });
   };
 
-  const ensureCompressedDataUrl = (dataUrl: string, maxDimension = 800, quality = 0.7): Promise<string> => {
+  const ensureCompressedDataUrl = (dataUrl: string, maxDimension = 640, quality = 0.65): Promise<string> => {
     return new Promise((resolve) => {
       if (!dataUrl || !dataUrl.startsWith('data:image/')) {
         resolve(dataUrl);
@@ -402,13 +607,64 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     });
   };
 
+  const optimizeProductPayloadSize = async (payload: Record<string, any>): Promise<Record<string, any>> => {
+    const resultPayload = { ...payload };
+    let payloadSize = JSON.stringify(resultPayload).length;
+
+    // Target safe size: 650KB (Firestore maximum per doc is 1MB)
+    if (payloadSize <= 650000) {
+      return resultPayload;
+    }
+
+    // Step 1: Compress images to 500px, quality 0.55
+    if (resultPayload.imageUrl && resultPayload.imageUrl.startsWith('data:image/')) {
+      resultPayload.imageUrl = await ensureCompressedDataUrl(resultPayload.imageUrl, 500, 0.55);
+    }
+    if (Array.isArray(resultPayload.additionalImages) && resultPayload.additionalImages.length > 0) {
+      resultPayload.additionalImages = await Promise.all(
+        resultPayload.additionalImages.map((img: string) =>
+          img.startsWith('data:image/') ? ensureCompressedDataUrl(img, 500, 0.55) : Promise.resolve(img)
+        )
+      );
+    }
+
+    payloadSize = JSON.stringify(resultPayload).length;
+    if (payloadSize <= 650000) {
+      return resultPayload;
+    }
+
+    // Step 2: More aggressive compression to 380px, quality 0.45
+    if (resultPayload.imageUrl && resultPayload.imageUrl.startsWith('data:image/')) {
+      resultPayload.imageUrl = await ensureCompressedDataUrl(resultPayload.imageUrl, 380, 0.45);
+    }
+    if (Array.isArray(resultPayload.additionalImages) && resultPayload.additionalImages.length > 0) {
+      resultPayload.additionalImages = await Promise.all(
+        resultPayload.additionalImages.map((img: string) =>
+          img.startsWith('data:image/') ? ensureCompressedDataUrl(img, 380, 0.45) : Promise.resolve(img)
+        )
+      );
+    }
+
+    payloadSize = JSON.stringify(resultPayload).length;
+    if (payloadSize <= 650000) {
+      return resultPayload;
+    }
+
+    // Step 3: If gallery images array is large, keep top 6 images
+    if (Array.isArray(resultPayload.additionalImages) && resultPayload.additionalImages.length > 6) {
+      resultPayload.additionalImages = resultPayload.additionalImages.slice(0, 6);
+    }
+
+    return resultPayload;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGallery = false) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     for (const file of Array.from(files) as File[]) {
       try {
-        const compressedBase64 = await compressImageFile(file, 800, 0.7);
+        const compressedBase64 = await compressImageFile(file, 640, 0.65);
         if (compressedBase64) {
           if (isGallery) {
             setAdditionalImages((prev) => [...prev, compressedBase64]);
@@ -525,6 +781,14 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       const parsedStock = parseInt(stock, 10) || 0;
       const parsedOriginal = originalPrice ? parseFloat(originalPrice) : null;
 
+      const validVariants = variants
+        .filter((v) => v.name.trim() && v.options && v.options.length > 0)
+        .map((v) => ({
+          id: v.id || Date.now().toString() + Math.random().toString(36).substring(2, 5),
+          name: v.name.trim(),
+          options: v.options.map((o) => o.trim()).filter(Boolean),
+        }));
+
       const newProductPayload: Record<string, any> = {
         title,
         description,
@@ -543,6 +807,18 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         createdAt: new Date().toISOString(),
       };
 
+      if (validVariants.length > 0) {
+        newProductPayload.variants = validVariants;
+      }
+
+      if (tags.length > 0) {
+        newProductPayload.tags = tags;
+      }
+
+      if (videoUrl.trim()) {
+        newProductPayload.videoUrl = videoUrl.trim();
+      }
+
       if (parsedOriginal !== null && !isNaN(parsedOriginal)) {
         newProductPayload.originalPrice = parsedOriginal;
       }
@@ -551,24 +827,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         newProductPayload.additionalImages = finalGallery;
       }
 
-      // Check estimated size
-      let payloadSize = JSON.stringify(newProductPayload).length;
-      if (payloadSize > 800000) {
-        // Apply aggressive compression if still over 800KB
-        finalMainImage = await ensureCompressedDataUrl(finalMainImage, 600, 0.5);
-        finalGallery = await Promise.all(finalGallery.map((g) => ensureCompressedDataUrl(g, 600, 0.5)));
-        newProductPayload.imageUrl = finalMainImage;
-        if (finalGallery.length > 0) {
-          newProductPayload.additionalImages = finalGallery;
-        }
-        payloadSize = JSON.stringify(newProductPayload).length;
-      }
+      // Automatically optimize payload size to fit safely under Firestore doc size limits
+      const finalProductPayload = await optimizeProductPayloadSize(newProductPayload);
 
-      if (payloadSize >= 1000000) {
-        throw new Error('Product payload with attached images is too large. Please reduce the number or resolution of images.');
-      }
-
-      const docRef = await addDoc(collection(db, 'products'), newProductPayload);
+      const docRef = await addDoc(collection(db, 'products'), finalProductPayload);
       const newProdId = docRef.id;
       const prodUrl = getShareableProductUrl(newProdId);
       const storeUrl = getShareableStoreUrl(currentUser.uid);
@@ -588,6 +850,9 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       setOriginalPrice('');
       setImageUrl('');
       setAdditionalImages([]);
+      setVariants([]);
+      setTags([]);
+      setVideoUrl('');
       setDeliveryFee('0');
       setSuccessMsg('Product published successfully & shareable link created!');
       setTimeout(() => setSuccessMsg(null), 5000);
@@ -621,39 +886,6 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
 
   const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus) => {
     await updateDoc(doc(db, 'orders', orderId), { status });
-  };
-
-  const handleCleanAllData = async () => {
-    if (!window.confirm('Are you sure you want to clean ALL sample products, customer orders, and local cart data? This will clear all existing sample items.')) {
-      return;
-    }
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    try {
-      // Delete all products
-      const prodSnap = await getDocs(collection(db, 'products'));
-      for (const docSnap of prodSnap.docs) {
-        await deleteDoc(doc(db, 'products', docSnap.id));
-      }
-
-      // Delete all orders
-      const orderSnap = await getDocs(collection(db, 'orders'));
-      for (const docSnap of orderSnap.docs) {
-        await deleteDoc(doc(db, 'orders', docSnap.id));
-      }
-
-      // Clear local storage
-      localStorage.removeItem('cartgo_cart_v1');
-      localStorage.removeItem('cartgo_wishlist_v1');
-
-      setMyProducts([]);
-      setSellerOrders([]);
-      setSuccessMsg('All sample data, products, and customer orders have been cleaned successfully!');
-      setTimeout(() => setSuccessMsg(null), 4000);
-    } catch (err: any) {
-      console.error('Error cleaning sample data:', err);
-      setErrorMsg('Failed to clean sample data: ' + (err.message || 'Error occurred'));
-    }
   };
 
   const totalEarnings = sellerOrders.reduce((acc, order) => {
@@ -881,16 +1113,6 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
               <span>About Seller & Courier</span>
             </button>
           </div>
-
-          {/* Clean All Sample Data Button */}
-          <button
-            onClick={handleCleanAllData}
-            className="mb-1 py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-lg flex items-center gap-1.5 transition-colors"
-            title="Clean all sample products and orders"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Clean All Sample Data</span>
-          </button>
         </div>
 
         {/* Tab Body */}
@@ -1386,6 +1608,15 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                   Feature in Cart Go Daily Flash Sale section
                 </label>
               </div>
+
+              {/* Product Variants & Options (Optional) */}
+              <ProductVariantManager variants={variants} onChange={setVariants} />
+
+              {/* Product Search Keywords & Tags */}
+              <ProductTagManager tags={tags} onChange={setTags} />
+
+              {/* Product Demo Video (Optional) */}
+              <ProductVideoManager videoUrl={videoUrl} onChange={setVideoUrl} />
 
               <button
                 type="submit"
@@ -2289,6 +2520,15 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                   Feature in Cart Go Flash Sale Section
                 </label>
               </div>
+
+              {/* Product Variants & Options (Optional) */}
+              <ProductVariantManager variants={editVariants} onChange={setEditVariants} />
+
+              {/* Product Search Keywords & Tags */}
+              <ProductTagManager tags={editTags} onChange={setEditTags} />
+
+              {/* Product Demo Video (Optional) */}
+              <ProductVideoManager videoUrl={editVideoUrl} onChange={setEditVideoUrl} />
 
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
                 <button

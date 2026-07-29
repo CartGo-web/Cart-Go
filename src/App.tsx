@@ -203,34 +203,6 @@ function MarketplaceMain() {
       try {
         const prodCol = collection(db, 'products');
 
-        // Automatically clean sample products and sample orders from Firestore
-        getDocs(prodCol).then((snapshot) => {
-          snapshot.forEach(async (docSnap) => {
-            const data = docSnap.data();
-            if (data && (data.sellerId === 'seller' || !data.sellerId || data.isSampleProduct)) {
-              try {
-                await deleteDoc(doc(db, 'products', docSnap.id));
-              } catch (e) {
-                console.warn('Sample product cleanup warning:', e);
-              }
-            }
-          });
-        }).catch((e) => console.warn('Product snapshot error:', e));
-
-        // Clean sample orders if any exist
-        getDocs(collection(db, 'orders')).then((snapshot) => {
-          snapshot.forEach(async (docSnap) => {
-            const data = docSnap.data();
-            if (data && (data.buyerId === 'sample' || data.isSampleOrder)) {
-              try {
-                await deleteDoc(doc(db, 'orders', docSnap.id));
-              } catch (e) {
-                console.warn('Sample order cleanup warning:', e);
-              }
-            }
-          });
-        }).catch((e) => console.warn('Order snapshot error:', e));
-
         // Live Listener
         unsub = onSnapshot(
           prodCol,
@@ -256,6 +228,9 @@ function MarketplaceMain() {
                   isFlashSale: !!data.isFlashSale,
                   deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 0,
                   additionalImages: Array.isArray(data.additionalImages) ? data.additionalImages : undefined,
+                  variants: Array.isArray(data.variants) ? data.variants : undefined,
+                  tags: Array.isArray(data.tags) ? data.tags : undefined,
+                  videoUrl: typeof data.videoUrl === 'string' && data.videoUrl.trim() ? data.videoUrl.trim() : undefined,
                   createdAt: data.createdAt || new Date().toISOString(),
                 });
               }
@@ -307,8 +282,9 @@ function MarketplaceMain() {
     const titleMatch = (p.title || '').toLowerCase().includes(searchLower);
     const descMatch = (p.description || '').toLowerCase().includes(searchLower);
     const sellerMatch = (p.sellerName || '').toLowerCase().includes(searchLower);
+    const tagMatch = Array.isArray(p.tags) && p.tags.some((tag) => tag.toLowerCase().includes(searchLower));
 
-    return matchesStore && matchesCategory && (titleMatch || descMatch || sellerMatch);
+    return matchesStore && matchesCategory && (titleMatch || descMatch || sellerMatch || tagMatch);
   });
 
   const storeProducts = selectedStoreId ? products.filter((p) => p.sellerId === selectedStoreId) : [];
