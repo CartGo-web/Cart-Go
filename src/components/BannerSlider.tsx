@@ -133,8 +133,8 @@ export const BannerSlider: React.FC<{ onExploreClick: () => void }> = ({ onExplo
             <Gift className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-xs font-bold text-slate-800">Daily Flash Sales</h4>
-            <p className="text-[10px] text-slate-500">Extra voucher discounts</p>
+            <h4 className="text-xs font-bold text-slate-800">Store Delivery</h4>
+            <p className="text-[10px] text-[#FF5500] font-extrabold">1 Delivery Charge Per Store</p>
           </div>
         </div>
 

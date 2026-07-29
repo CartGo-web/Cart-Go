@@ -210,7 +210,7 @@ function MarketplaceMain() {
             const list: Product[] = [];
             snapshot.forEach((docSnap) => {
               const data = docSnap.data();
-              if (data && data.sellerId !== 'seller') {
+              if (data && data.title) {
                 list.push({
                   id: docSnap.id,
                   title: data.title || 'Untitled Product',
@@ -220,7 +220,7 @@ function MarketplaceMain() {
                   category: data.category || 'electronics',
                   imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
                   stock: typeof data.stock === 'number' ? data.stock : 10,
-                  sellerId: data.sellerId,
+                  sellerId: data.sellerId || 'seller',
                   sellerName: data.sellerName || 'Verified Cart Go Seller',
                   rating: typeof data.rating === 'number' ? data.rating : 5.0,
                   reviewCount: typeof data.reviewCount === 'number' ? data.reviewCount : 0,

@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   X,
   Trash2,
   Plus,
   Minus,
   ShoppingBag,
-  Tag,
   ArrowRight,
   Truck,
-  CheckCircle,
+  Store,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { formatPKR } from '../utils/formatters';
@@ -29,29 +28,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     removeFromCart,
     updateQuantity,
     subtotal,
-    discountAmount,
     deliveryFee,
+    storesCount,
+    storeDeliveryBreakdown,
     grandTotal,
-    appliedCoupon,
-    applyCoupon,
-    removeCoupon,
   } = useCart();
 
-  const [couponInput, setCouponInput] = useState('');
-  const [couponError, setCouponError] = useState<string | null>(null);
-
   if (!isOpen) return null;
-
-  const handleApplyCoupon = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCouponError(null);
-    const success = applyCoupon(couponInput);
-    if (!success) {
-      setCouponError('Invalid voucher code. Try CARTGO20 or WELCOME50');
-    } else {
-      setCouponInput('');
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
@@ -72,7 +55,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <span>Shopping Cart</span>
                   <span className="text-[10px] bg-gradient-to-r from-[#FF9900] to-[#FF5500] text-white font-extrabold px-2 py-0.5 rounded-full">Cart Go</span>
                 </h2>
-                <p className="text-xs text-slate-400">{cart.length} unique items</p>
+                <p className="text-xs text-slate-400">{cart.length} unique items ({storesCount} {storesCount === 1 ? 'store' : 'stores'})</p>
               </div>
             </div>
             <button
@@ -119,6 +102,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       <h4 className="text-xs font-semibold text-slate-800 truncate">
                         {item.product.title}
                       </h4>
+
+                      <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
+                        <Store className="w-3 h-3 text-[#FF5500] shrink-0" />
+                        <span className="truncate">{item.product.sellerName || 'Verified Store'}</span>
+                      </div>
 
                       {/* Display Selected Variants */}
                       {item.selectedVariantText && (
@@ -176,46 +164,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           {/* Cart Footer Summary */}
           {cart.length > 0 && (
             <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-4">
-              {/* Voucher Code Form */}
-              <div>
-                {appliedCoupon ? (
-                  <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-800">
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      <span>Voucher '{appliedCoupon}' Applied</span>
-                    </div>
-                    <button
-                      onClick={removeCoupon}
-                      className="text-slate-400 hover:text-rose-600 font-bold"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <form onSubmit={handleApplyCoupon} className="space-y-1">
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Tag className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Voucher Code (e.g. CARTGO20)"
-                          value={couponInput}
-                          onChange={(e) => setCouponInput(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-[#F57224]"
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg transition-colors"
-                      >
-                        Apply
-                      </button>
-                    </div>
-                    {couponError && <p className="text-[11px] text-rose-500">{couponError}</p>}
-                  </form>
-                )}
-              </div>
-
               {/* Price Breakdown */}
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between text-slate-600">
@@ -223,30 +171,44 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <span className="font-semibold">{formatPKR(subtotal)}</span>
                 </div>
 
-                {discountAmount > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-semibold">
-                    <span>Voucher Savings</span>
-                    <span>-{formatPKR(discountAmount)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-slate-600">
-                  <span>Delivery Charges</span>
+                <div className="flex justify-between text-slate-600 items-center">
+                  <span className="flex items-center gap-1">
+                    <span>Delivery Charges</span>
+                    <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 px-1.5 py-0.2 rounded-full">
+                      {storesCount} {storesCount === 1 ? 'Store' : 'Stores'}
+                    </span>
+                  </span>
                   <span className={deliveryFee > 0 ? 'font-semibold text-slate-900' : 'font-extrabold text-emerald-600'}>
                     {deliveryFee > 0 ? formatPKR(deliveryFee) : 'FREE'}
                   </span>
                 </div>
 
-                {/* Delivery Charges Notice */}
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start gap-2">
-                  <Truck className="w-4 h-4 text-[#FF5500] shrink-0 mt-0.5" />
-                  <div className="text-[11px] font-semibold leading-tight">
+                {/* Per-Store Delivery Charges Notice & Breakdown */}
+                <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-amber-900 space-y-2">
+                  <div className="flex items-center gap-2 text-[11px] font-bold">
+                    <Truck className="w-4 h-4 text-[#FF5500] shrink-0" />
                     <span>
-                      {deliveryFee > 0
-                        ? `Delivery charges included in Grand Total (${formatPKR(deliveryFee)}).`
-                        : 'Free Delivery applied on all items in your cart!'}
+                      {storesCount === 1
+                        ? '1 Store: Delivery charge applies 1 time for all items from this store.'
+                        : `${storesCount} Stores: Delivery charges calculated separately per store.`}
                     </span>
                   </div>
+
+                  {storeDeliveryBreakdown.length > 0 && (
+                    <div className="pt-1 border-t border-amber-200/60 space-y-1 text-[10px]">
+                      {storeDeliveryBreakdown.map((s) => (
+                        <div key={s.storeId} className="flex justify-between items-center text-slate-700 font-medium">
+                          <span className="flex items-center gap-1 truncate pr-2">
+                            <Store className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{s.storeName} ({s.itemCount} {s.itemCount === 1 ? 'item' : 'items'}):</span>
+                          </span>
+                          <span className="font-bold shrink-0">
+                            {s.fee > 0 ? formatPKR(s.fee) : 'Free Delivery'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-slate-200 pt-2 flex justify-between text-sm font-extrabold text-slate-900">

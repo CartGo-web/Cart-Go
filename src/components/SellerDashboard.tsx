@@ -445,9 +445,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         additionalImages: finalGallery,
         variants: validVariants,
         tags: editTags,
-        videoUrl: editVideoUrl.trim() || undefined,
-        sellerName: userProfile?.displayName || storeNameInput || editingProduct.sellerName,
-        sellerPhone: sellerPhone || storePhoneInput || editingProduct.sellerPhone,
+        videoUrl: editVideoUrl.trim() || '',
+        sellerId: editingProduct.sellerId || currentUser.uid,
+        sellerName: userProfile?.displayName || storeNameInput || editingProduct.sellerName || 'Verified Cart Go Seller',
+        sellerPhone: sellerPhone || storePhoneInput || editingProduct.sellerPhone || '',
         updatedAt: new Date().toISOString(),
       };
 
@@ -894,57 +895,59 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   }, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden relative my-8">
-        {/* Header */}
-        <div className="bg-[#111827] p-6 text-white flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden relative my-auto max-h-[92vh] flex flex-col border border-slate-200">
+        {/* Header - Fixed/Sticky Top */}
+        <div className="bg-[#111827] p-4 sm:p-5 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <button
               onClick={onClose}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-colors shrink-0"
-              title="Back to Marketplace"
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-colors shrink-0 flex items-center gap-1.5 text-xs font-bold border border-slate-700"
+              title="Return to Homepage"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4 text-[#FF9900]" />
+              <span className="hidden sm:inline">Homepage</span>
             </button>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-[#FF9900] to-[#FF5500] flex items-center justify-center text-white font-bold shadow-sm shrink-0">
-              <Store className="w-6 h-6" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-r from-[#FF9900] to-[#FF5500] flex items-center justify-center text-white font-bold shadow-xs shrink-0">
+              <Store className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h2 className="text-lg font-bold flex items-center gap-2">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold flex items-center gap-2 truncate">
                 <span>Cart Go Seller Center</span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Logged in as <span className="text-[#FF9900] font-semibold">{userProfile?.displayName}</span>
+              <p className="text-[10px] sm:text-xs text-slate-400 truncate">
+                Logged in as <span className="text-[#FF9900] font-semibold">{userProfile?.displayName || 'Merchant'}</span>
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
               <button
                 onClick={() => {
                   onClose();
                   onOpenAdmin();
                 }}
-                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-md transition-all border border-amber-300"
+                className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-900 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all border border-amber-300 shrink-0"
                 title="Open Super Admin Console"
               >
                 <Sparkles className="w-3.5 h-3.5 fill-slate-900" />
-                <span>Super Admin Console</span>
+                <span className="hidden md:inline">Admin Console</span>
               </button>
             )}
             {currentUser && (
               <button
                 onClick={handleShareMyStore}
-                className="px-3 py-1.5 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md transition-all hidden sm:flex"
+                className="px-3 py-1.5 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all hidden sm:flex shrink-0"
                 title="Copy public store link to share with customers"
               >
                 {storeCopied ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                <span>{storeCopied ? 'Store Link Copied!' : 'Share My Store Link'}</span>
+                <span>{storeCopied ? 'Link Copied!' : 'Share Store Link'}</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors border border-slate-700"
+              className="px-3 py-1.5 bg-[#FF5500] hover:bg-[#E04400] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors shadow-xs shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Store</span>
@@ -952,171 +955,169 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
           </div>
         </div>
 
-        {/* Stats Strip */}
-        <div className="grid grid-cols-3 gap-4 bg-slate-50 p-4 border-b border-slate-200">
-          <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-orange-50 text-[#FF5500]">
-              <Package className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">Active Listings</span>
-              <div className="text-base font-extrabold text-slate-900">{myProducts.length}</div>
-            </div>
-          </div>
+        {/* Navigation Tabs Bar - Horizontally Scrollable & Sticky */}
+        <div className="bg-slate-900 text-slate-300 border-b border-slate-800 px-3 sm:px-6 pt-2 shrink-0 overflow-x-auto whitespace-nowrap scrollbar-none flex items-center gap-1">
+          <button
+            onClick={() => setActiveTab('add')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'add'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>List New Product</span>
+          </button>
 
-          <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
-              <ShoppingBag className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">Total Orders</span>
-              <div className="text-base font-extrabold text-slate-900">{sellerOrders.length}</div>
-            </div>
-          </div>
+          <button
+            onClick={() => setActiveTab('shopify')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'shopify'
+                ? 'border-[#008060] text-[#008060] bg-emerald-950/60 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Store className="w-4 h-4 text-[#008060]" />
+            <span className="flex items-center gap-1">
+              <span>Shopify 1-Click</span>
+              <span className="text-[9px] bg-[#008060] text-white px-1.5 py-0.2 rounded-full font-black uppercase">
+                1-Click
+              </span>
+            </span>
+          </button>
 
-          <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase">Total Sales Revenue</span>
-              <div className="text-base font-extrabold text-[#FF5500]">{formatPKR(totalEarnings)}</div>
-            </div>
-          </div>
+          <button
+            onClick={() => setActiveTab('products')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'products'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>My Listings ({myProducts.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('store')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'store'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Store className="w-4 h-4" />
+            <span>Edit Store Profile</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'orders'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Received Orders ({sellerOrders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 relative ${
+              activeTab === 'notifications'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Bell className="w-4 h-4" />
+            <span>Notifications ({notifications.length})</span>
+            {notifications.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('about')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'about'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>About Seller & Courier</span>
+          </button>
         </div>
 
-        {/* Store Link Showcase Banner */}
-        {currentUser && (
-          <div className="bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 border-y border-orange-200/80 px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-tr from-[#FF9900] to-[#FF5500] text-white rounded-xl shadow-xs shrink-0">
-                <Store className="w-5 h-5" />
+        {/* Smooth Scrollable Main Body Content Area */}
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 scroll-smooth bg-white">
+          {/* Stats Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200">
+            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-orange-50 text-[#FF5500]">
+                <Package className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
-                  <span>Your Merchant Store Link</span>
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
-                    Live Link
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 font-mono truncate max-w-xs sm:max-w-md mt-0.5">
-                  {getShareableStoreUrl(currentUser.uid)}
-                </p>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Active Listings</span>
+                <div className="text-base font-extrabold text-slate-900">{myProducts.length}</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={handleShareMyStore}
-                className="flex-1 sm:flex-none px-3.5 py-1.5 bg-[#FF5500] hover:bg-[#E04400] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0"
-              >
-                {storeCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                <span>{storeCopied ? 'Store Link Copied!' : 'Copy Store Link'}</span>
-              </button>
+            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Total Orders</span>
+                <div className="text-base font-extrabold text-slate-900">{sellerOrders.length}</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Total Sales Revenue</span>
+                <div className="text-base font-extrabold text-[#FF5500]">{formatPKR(totalEarnings)}</div>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between border-b border-slate-200 px-6 pt-2 bg-white gap-2">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab('add')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'add'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>List New Product</span>
-            </button>
+          {/* Store Link Showcase Banner */}
+          {currentUser && (
+            <div className="bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 border border-orange-200/80 p-3 sm:p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-tr from-[#FF9900] to-[#FF5500] text-white rounded-xl shadow-xs shrink-0">
+                  <Store className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
+                    <span>Your Merchant Store Link</span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                      Live Link
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-mono truncate max-w-xs sm:max-w-md mt-0.5">
+                    {getShareableStoreUrl(currentUser.uid)}
+                  </p>
+                </div>
+              </div>
 
-            <button
-              onClick={() => setActiveTab('shopify')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'shopify'
-                  ? 'border-[#008060] text-[#008060] bg-emerald-50/60'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Store className="w-4 h-4 text-[#008060]" />
-              <span className="flex items-center gap-1.5">
-                <span>Shopify 1-Click Sync</span>
-                <span className="text-[9px] bg-[#008060] text-white px-1.5 py-0.2 rounded-full font-black uppercase">
-                  1-Click
-                </span>
-              </span>
-            </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleShareMyStore}
+                  className="flex-1 sm:flex-none px-3.5 py-1.5 bg-[#FF5500] hover:bg-[#E04400] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0"
+                >
+                  {storeCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{storeCopied ? 'Link Copied!' : 'Copy Store Link'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'products'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              <span>My Listings ({myProducts.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('store')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'store'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Store className="w-4 h-4" />
-              <span>Edit Store Profile & Name</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'orders'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Received Customer Orders ({sellerOrders.length})</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('notifications')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors relative ${
-                activeTab === 'notifications'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>System Notifications ({notifications.length})</span>
-              {notifications.length > 0 && (
-                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('about')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-colors ${
-                activeTab === 'about'
-                  ? 'border-[#FF5500] text-[#FF5500]'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span>About Seller & Courier</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Body */}
-        <div className="p-6 max-h-[500px] overflow-y-auto">
           {/* Newly Created Product Link Card */}
           {newlyCreatedLinkInfo && (
             <div className="mb-6 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 p-5 rounded-2xl shadow-lg relative animate-in zoom-in-95 duration-200">
@@ -2053,6 +2054,23 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
               </div>
             </div>
           )}
+          {/* Bottom Action / Homepage Navigation Bar */}
+          <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl mt-6">
+            <div className="flex items-center gap-2 text-xs text-slate-600 font-medium">
+              <Store className="w-4 h-4 text-[#FF5500]" />
+              <span>Cart Go Merchant Center — Easy Product Listing & Order Fulfillment</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4 text-[#FF9900]" />
+                <span>Return to Homepage / Store</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

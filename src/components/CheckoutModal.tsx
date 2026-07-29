@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   ArrowLeft,
+  Store,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +27,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   onClose,
   onOrderSuccess,
 }) => {
-  const { cart, subtotal, discountAmount, deliveryFee, grandTotal, clearCart } = useCart();
+  const {
+    cart,
+    subtotal,
+    deliveryFee,
+    storesCount,
+    storeDeliveryBreakdown,
+    grandTotal,
+    clearCart,
+  } = useCart();
   const { currentUser, userProfile } = useAuth();
 
   const [fullName, setFullName] = useState(userProfile?.displayName || '');
@@ -256,24 +265,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
           </div>
 
-          {/* Delivery Charges & Courier Notice */}
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-2">
-            <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+          {/* Section 3: Delivery Charges & Store Breakdown */}
+          <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl text-amber-900 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
               <div className="flex items-center gap-2">
                 <Truck className="w-4 h-4 text-[#FF5500] shrink-0" />
-                <span className="text-xs font-extrabold text-slate-900">
-                  Delivery Charges & Courier Information
+                <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
+                  3. Delivery Charges ({storesCount} {storesCount === 1 ? 'Store' : 'Stores'})
                 </span>
               </div>
-              <span className={`text-xs font-bold ${deliveryFee > 0 ? 'text-slate-900' : 'text-emerald-700'}`}>
+              <span className={`text-xs font-extrabold px-2 py-0.5 rounded-full ${deliveryFee > 0 ? 'bg-orange-100 text-[#FF5500]' : 'bg-emerald-100 text-emerald-700'}`}>
                 {deliveryFee > 0 ? formatPKR(deliveryFee) : 'FREE DELIVERY'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-700 leading-snug">
-              {deliveryFee > 0
-                ? `Delivery charges of ${formatPKR(deliveryFee)} set by the seller(s) are included in your final payable amount.`
-                : 'Enjoy Free Delivery on all item(s) in this order! Cash on Delivery will be collected upon arrival at your doorstep.'}
+
+            <p className="text-[11px] text-slate-700 leading-snug font-medium">
+              {storesCount === 1
+                ? 'Delivery fee is charged 1 time for all items purchased from this store at the same time.'
+                : `${storesCount} Stores: Delivery fees are charged separately per store.`}
             </p>
+
+            {/* Breakdown per store */}
+            {storeDeliveryBreakdown.length > 0 && (
+              <div className="pt-2 border-t border-amber-200/60 space-y-1 text-xs">
+                {storeDeliveryBreakdown.map((s) => (
+                  <div key={s.storeId} className="flex justify-between items-center text-slate-800 font-semibold">
+                    <span className="flex items-center gap-1.5 truncate pr-2">
+                      <Store className="w-3.5 h-3.5 text-[#FF5500] shrink-0" />
+                      <span className="truncate">{s.storeName} ({s.itemCount} {s.itemCount === 1 ? 'item' : 'items'}):</span>
+                    </span>
+                    <span className="font-extrabold text-slate-900 shrink-0">
+                      {s.fee > 0 ? formatPKR(s.fee) : 'Free Delivery'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Total & Submit Button */}
@@ -281,7 +308,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <div className="space-y-0.5">
               <div className="text-[11px] text-slate-500 flex items-center gap-2">
                 <span>Subtotal: {formatPKR(subtotal)}</span>
-                {discountAmount > 0 && <span className="text-emerald-600 font-bold">(-{formatPKR(discountAmount)})</span>}
                 <span>• Delivery: {deliveryFee > 0 ? formatPKR(deliveryFee) : 'Free'}</span>
               </div>
               <span className="text-xs text-slate-600 font-bold block">Grand Payable Total</span>

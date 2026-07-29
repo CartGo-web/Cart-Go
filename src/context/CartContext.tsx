@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Product } from '../types';
 
+export interface StoreDeliveryInfo {
+  storeId: string;
+  storeName: string;
+  fee: number;
+  itemCount: number;
+}
+
 interface CartContextType {
   cart: CartItem[];
   wishlist: Product[];
@@ -16,12 +23,11 @@ interface CartContextType {
   toggleWishlist: (product: Product) => void;
   isInWishlist: (productId: string) => boolean;
   syncProducts: (latestProducts: Product[]) => void;
-  appliedCoupon: string | null;
-  applyCoupon: (code: string) => boolean;
-  removeCoupon: () => void;
   subtotal: number;
   discountAmount: number;
   deliveryFee: number;
+  storesCount: number;
+  storeDeliveryBreakdown: StoreDeliveryInfo[];
   grandTotal: number;
   totalItemsCount: number;
 }
@@ -49,8 +55,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return [];
     }
   });
-
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -126,7 +130,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearCart = () => {
     setCart([]);
-    setAppliedCoupon(null);
   };
 
   const toggleWishlist = (product: Product) => {
@@ -165,36 +168,49 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
-  const applyCoupon = (code: string) => {
-    const formatted = code.trim().toUpperCase();
-    if (formatted === 'CARTGO20' || formatted === 'CARTGO10' || formatted === 'WELCOME50') {
-      setAppliedCoupon(formatted);
-      return true;
-    }
-    return false;
-  };
-
-  const removeCoupon = () => {
-    setAppliedCoupon(null);
-  };
-
   const subtotal = cart.reduce((acc, item) => acc + item.product.price * item.quantity, 0);
 
-  let discountAmount = 0;
-  if (appliedCoupon === 'CARTGO20') {
-    discountAmount = subtotal * 0.2;
-  } else if (appliedCoupon === 'CARTGO10') {
-    discountAmount = subtotal * 0.1;
-  } else if (appliedCoupon === 'WELCOME50') {
-    discountAmount = subtotal * 0.5;
-  }
+  // Per-Store Delivery Fee Calculation:
+  // If customer buys more than 1 item from the SAME store, charge delivery fee ONCE for that store.
+  // If customer buys items from 2 or more different stores, charge delivery fee SEPARATELY per store.
+  const storeMap = new Map<string, { storeName: string; maxFee: number; totalItems: number }>();
 
-  // Delivery fee calculated from custom product delivery charges in cart
-  const deliveryFee = cart.reduce((acc, item) => {
-    const fee = typeof item.product.deliveryFee === 'number' ? item.product.deliveryFee : 0;
-    return acc + fee;
-  }, 0);
-  const grandTotal = Math.max(0, subtotal - discountAmount + deliveryFee);
+  cart.forEach((item) => {
+    const storeKey = item.product.sellerId || item.product.sellerName || 'default_store';
+    const storeName = item.product.sellerName || 'Verified Store';
+    const itemFee = typeof item.product.deliveryFee === 'number' ? item.product.deliveryFee : 0;
+
+    if (!storeMap.has(storeKey)) {
+      storeMap.set(storeKey, {
+        storeName,
+        maxFee: itemFee,
+        totalItems: item.quantity,
+      });
+    } else {
+      const existing = storeMap.get(storeKey)!;
+      existing.totalItems += item.quantity;
+      if (itemFee > existing.maxFee) {
+        existing.maxFee = itemFee;
+      }
+    }
+  });
+
+  let deliveryFee = 0;
+  const storeDeliveryBreakdown: StoreDeliveryInfo[] = [];
+
+  storeMap.forEach((val, key) => {
+    deliveryFee += val.maxFee;
+    storeDeliveryBreakdown.push({
+      storeId: key,
+      storeName: val.storeName,
+      fee: val.maxFee,
+      itemCount: val.totalItems,
+    });
+  });
+
+  const storesCount = storeMap.size;
+  const discountAmount = 0;
+  const grandTotal = Math.max(0, subtotal + deliveryFee);
   const totalItemsCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
@@ -209,12 +225,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toggleWishlist,
         isInWishlist,
         syncProducts,
-        appliedCoupon,
-        applyCoupon,
-        removeCoupon,
         subtotal,
         discountAmount,
         deliveryFee,
+        storesCount,
+        storeDeliveryBreakdown,
         grandTotal,
         totalItemsCount,
       }}
