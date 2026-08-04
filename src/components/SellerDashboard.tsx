@@ -29,6 +29,12 @@ import {
   HelpCircle,
   Info,
   Tag,
+  Bot,
+  Wand2,
+  Zap,
+  RefreshCw,
+  Layers,
+  Loader2,
 } from 'lucide-react';
 import { ShopifyImporter } from './ShopifyImporter';
 import { ProductTagManager } from './ProductTagManager';
@@ -242,7 +248,110 @@ const PRESET_IMAGES = [
 
 export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose, onOpenAdmin }) => {
   const { currentUser, userProfile, isAdmin, updateUserProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'add' | 'shopify' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('add');
+  const [activeTab, setActiveTab] = useState<'ai' | 'add' | 'shopify' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('ai');
+
+  // AI Store Automation State
+  const [aiMode, setAiMode] = useState<'create' | 'edit' | 'batch'>('create');
+  const [aiRawInput, setAiRawInput] = useState('');
+  const [aiSelectedProdId, setAiSelectedProdId] = useState<string>('');
+  const [aiEditInstruction, setAiEditInstruction] = useState('');
+  const [aiBatchInput, setAiBatchInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
+  const [aiFormPrompt, setAiFormPrompt] = useState('');
+  const [aiFormLoading, setAiFormLoading] = useState(false);
+  const [aiCustomImage, setAiCustomImage] = useState<string>('');
+  const [aiImageUploading, setAiImageUploading] = useState<boolean>(false);
+
+  const handleAiImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAiImageUploading(true);
+    try {
+      const compressed = await compressImageFile(file, 800, 0.7);
+      if (compressed) {
+        setAiCustomImage(compressed);
+      } else {
+        throw new Error('Image compression returned empty result');
+      }
+    } catch (err) {
+      console.error('Failed to upload custom AI image:', err);
+      setAiError('Failed to process image file. Please try a different photo.');
+    } finally {
+      setAiImageUploading(false);
+    }
+  };
+
+  // Batch Multi-Product AI State with Custom Pictures
+  const [batchModeType, setBatchModeType] = useState<'structured' | 'text'>('structured');
+  const [batchItems, setBatchItems] = useState<{ id: string; text: string; customImage: string }[]>([
+    { id: '1', text: '', customImage: '' },
+    { id: '2', text: '', customImage: '' },
+  ]);
+
+  const handleAddBatchItem = () => {
+    setBatchItems((prev) => [
+      ...prev,
+      { id: Date.now().toString() + Math.random().toString(36).substring(2, 5), text: '', customImage: '' },
+    ]);
+  };
+
+  const handleRemoveBatchItem = (id: string) => {
+    setBatchItems((prev) => (prev.length > 1 ? prev.filter((it) => it.id !== id) : prev));
+  };
+
+  const handleBatchItemImageUpload = async (id: string, file: File) => {
+    setAiImageUploading(true);
+    try {
+      const compressed = await compressImageFile(file, 800, 0.7);
+      if (compressed) {
+        setBatchItems((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, customImage: compressed } : item))
+        );
+      }
+    } catch (err) {
+      console.error('Batch item image upload error:', err);
+      setAiError('Failed to process item picture.');
+    } finally {
+      setAiImageUploading(false);
+    }
+  };
+
+  const handleBatchMultiPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setAiImageUploading(true);
+    try {
+      const newItems: { id: string; text: string; customImage: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const compressed = await compressImageFile(file, 800, 0.7);
+        if (compressed) {
+          const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+          newItems.push({
+            id: Date.now().toString() + Math.random().toString(36).substring(2, 6) + i,
+            text: `Product Photo: ${cleanName}`,
+            customImage: compressed,
+          });
+        }
+      }
+      if (newItems.length > 0) {
+        setBatchItems((prev) => {
+          const validExisting = prev.filter((it) => it.text.trim() || it.customImage);
+          return [...validExisting, ...newItems];
+        });
+        setBatchModeType('structured');
+      }
+    } catch (err) {
+      console.error('Batch multi-photo upload error:', err);
+      setAiError('Failed to upload some product photos. Please try again.');
+    } finally {
+      setAiImageUploading(false);
+    }
+  };
 
   // Notifications State
   const [notifications, setNotifications] = useState<SellerNotification[]>([]);
@@ -684,6 +793,265 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
     setAdditionalImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
+  const handleAiProcessProduct = async () => {
+    if (aiMode === 'create' && !aiRawInput.trim()) {
+      setAiError('Please enter product details, supplier notes, or prompt for the AI.');
+      return;
+    }
+    if (aiMode === 'edit') {
+      if (!aiSelectedProdId) {
+        setAiError('Please select a product to edit with AI.');
+        return;
+      }
+      if (!aiEditInstruction.trim()) {
+        setAiError('Please enter what you want AI to change on this product.');
+        return;
+      }
+    }
+
+    setAiLoading(true);
+    setAiError(null);
+    setAiSuccessMsg(null);
+
+    try {
+      const selectedProd = myProducts.find((p) => p.id === aiSelectedProdId);
+
+      const res = await fetch('/api/ai/process-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: aiMode,
+          rawInput: aiRawInput.trim(),
+          existingProduct: selectedProd,
+          instruction: aiEditInstruction.trim(),
+          customImage: aiCustomImage || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'AI processing failed');
+      }
+
+      const aiProduct = data.product;
+
+      if (aiMode === 'edit' && selectedProd) {
+        const validVariants = (aiProduct.variants || [])
+          .filter((v: any) => v.name && v.options && v.options.length > 0)
+          .map((v: any) => ({
+            id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
+            name: v.name.trim(),
+            options: v.options.map((o: any) => o.toString().trim()).filter(Boolean),
+          }));
+
+        const updatePayload: Record<string, any> = {
+          title: aiProduct.title || selectedProd.title,
+          description: aiProduct.description || selectedProd.description,
+          price: typeof aiProduct.price === 'number' ? aiProduct.price : selectedProd.price,
+          category: aiProduct.category || selectedProd.category,
+          stock: typeof aiProduct.stock === 'number' ? aiProduct.stock : selectedProd.stock,
+          deliveryFee: typeof aiProduct.deliveryFee === 'number' ? aiProduct.deliveryFee : (selectedProd.deliveryFee || 0),
+          tags: aiProduct.tags || selectedProd.tags || [],
+          imageUrl: aiCustomImage || aiProduct.imageUrl || selectedProd.imageUrl,
+          sellerId: selectedProd.sellerId || currentUser?.uid,
+          sellerName: userProfile?.displayName || storeNameInput || selectedProd.sellerName || 'Verified Cart Go Seller',
+          sellerPhone: userProfile?.phone || storePhoneInput || selectedProd.sellerPhone || '',
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (aiProduct.originalPrice && aiProduct.originalPrice > updatePayload.price) {
+          updatePayload.originalPrice = aiProduct.originalPrice;
+        }
+
+        if (validVariants.length > 0) {
+          updatePayload.variants = validVariants;
+        }
+
+        const optimizedPayload = await optimizeProductPayloadSize(updatePayload);
+        await updateDoc(doc(db, 'products', selectedProd.id), optimizedPayload);
+
+        setAiSuccessMsg(`✨ AI successfully updated "${updatePayload.title}"! Changes are live on your store.`);
+        setAiEditInstruction('');
+        setAiCustomImage('');
+      } else {
+        const validVariants = (aiProduct.variants || [])
+          .filter((v: any) => v.name && v.options && v.options.length > 0)
+          .map((v: any) => ({
+            id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
+            name: v.name.trim(),
+            options: v.options.map((o: any) => o.toString().trim()).filter(Boolean),
+          }));
+
+        const newProdPayload: Record<string, any> = {
+          title: aiProduct.title || 'AI Generated Product',
+          description: aiProduct.description || 'High quality item generated by AI Store Assistant.',
+          price: typeof aiProduct.price === 'number' ? aiProduct.price : 1999,
+          category: aiProduct.category || 'electronics',
+          imageUrl: aiCustomImage || aiProduct.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
+          stock: typeof aiProduct.stock === 'number' ? aiProduct.stock : 20,
+          sellerId: currentUser?.uid || 'anonymous',
+          sellerName: userProfile?.displayName || storeNameInput || 'Cart Go Seller',
+          sellerPhone: userProfile?.phone || storePhoneInput || '',
+          rating: 5.0,
+          reviewCount: 0,
+          salesCount: 0,
+          isFlashSale: false,
+          deliveryFee: typeof aiProduct.deliveryFee === 'number' ? aiProduct.deliveryFee : 0,
+          tags: aiProduct.tags || [],
+          createdAt: new Date().toISOString(),
+        };
+
+        if (aiProduct.originalPrice && aiProduct.originalPrice > newProdPayload.price) {
+          newProdPayload.originalPrice = aiProduct.originalPrice;
+        }
+
+        if (validVariants.length > 0) {
+          newProdPayload.variants = validVariants;
+        }
+
+        const optimizedPayload = await optimizeProductPayloadSize(newProdPayload);
+        const docRef = await addDoc(collection(db, 'products'), optimizedPayload);
+
+        setAiSuccessMsg(`✨ AI successfully generated & published "${newProdPayload.title}" (ID: ${docRef.id}) directly to your store!`);
+        setAiRawInput('');
+        setAiCustomImage('');
+      }
+    } catch (err: any) {
+      console.error('AI store action error:', err);
+      setAiError(err.message || 'AI store operation failed. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiBatchGenerate = async () => {
+    const activeItems = batchItems.filter((it) => it.text.trim() || it.customImage);
+
+    if (batchModeType === 'structured' && activeItems.length === 0) {
+      setAiError('Please add at least one product with text details or attach a photo.');
+      return;
+    }
+
+    if (batchModeType === 'text' && !aiBatchInput.trim()) {
+      setAiError('Please enter a list of items for batch AI generation.');
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError(null);
+    setAiSuccessMsg(null);
+
+    try {
+      const payloadBody: Record<string, any> = {
+        bulkInput: aiBatchInput.trim(),
+      };
+
+      if (batchModeType === 'structured' && activeItems.length > 0) {
+        payloadBody.itemsWithImages = activeItems.map((it) => ({
+          text: it.text.trim(),
+          customImage: it.customImage || undefined,
+        }));
+      }
+
+      const res = await fetch('/api/ai/batch-generate-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadBody),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Batch AI generation failed');
+      }
+
+      const products = data.products || [];
+      if (products.length === 0) {
+        throw new Error('No products could be parsed from the batch input.');
+      }
+
+      let publishedCount = 0;
+      for (const item of products) {
+        const payload: Record<string, any> = {
+          title: item.title || 'AI Product',
+          description: item.description || 'Quality product auto-listed by AI.',
+          price: typeof item.price === 'number' ? item.price : 1500,
+          category: item.category || 'electronics',
+          imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
+          stock: typeof item.stock === 'number' ? item.stock : 15,
+          sellerId: currentUser?.uid || 'anonymous',
+          sellerName: userProfile?.displayName || storeNameInput || 'Cart Go Seller',
+          sellerPhone: userProfile?.phone || storePhoneInput || '',
+          rating: 5.0,
+          reviewCount: 0,
+          salesCount: 0,
+          isFlashSale: false,
+          deliveryFee: typeof item.deliveryFee === 'number' ? item.deliveryFee : 0,
+          tags: item.tags || [],
+          createdAt: new Date().toISOString(),
+        };
+
+        if (item.originalPrice && item.originalPrice > payload.price) {
+          payload.originalPrice = item.originalPrice;
+        }
+
+        const optimized = await optimizeProductPayloadSize(payload);
+        await addDoc(collection(db, 'products'), optimized);
+        publishedCount++;
+      }
+
+      setAiSuccessMsg(`🎉 Success! AI generated & published ${publishedCount} products directly into your store catalog!`);
+      setAiBatchInput('');
+      setBatchItems([
+        { id: '1', text: '', customImage: '' },
+        { id: '2', text: '', customImage: '' },
+      ]);
+    } catch (err: any) {
+      console.error('Batch AI error:', err);
+      setAiError(err.message || 'Batch AI auto-publishing failed.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAiFormFill = async () => {
+    if (!aiFormPrompt.trim()) {
+      setErrorMsg('Please enter product info or prompt in the AI Auto-Fill bar above.');
+      return;
+    }
+    setAiFormLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await fetch('/api/ai/process-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'create', rawInput: aiFormPrompt.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate form fields');
+      }
+
+      const p = data.product;
+      if (p.title) setTitle(p.title);
+      if (p.description) setDescription(p.description);
+      if (p.price) setPrice(p.price.toString());
+      if (p.originalPrice) setOriginalPrice(p.originalPrice.toString());
+      if (p.category) setCategory(p.category);
+      if (p.stock) setStock(p.stock.toString());
+      if (p.deliveryFee !== undefined) setDeliveryFee(p.deliveryFee.toString());
+      if (p.imageUrl) setImageUrl(p.imageUrl);
+      if (p.tags) setTags(p.tags);
+
+      setSuccessMsg('✨ Form fields successfully populated by AI! Review and click "Publish Product to Store".');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'AI Auto-Fill failed');
+    } finally {
+      setAiFormLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -958,6 +1326,23 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         {/* Navigation Tabs Bar - Horizontally Scrollable & Sticky */}
         <div className="bg-slate-900 text-slate-300 border-b border-slate-800 px-3 sm:px-6 pt-2 shrink-0 overflow-x-auto whitespace-nowrap scrollbar-none flex items-center gap-1">
           <button
+            onClick={() => setActiveTab('ai')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+              activeTab === 'ai'
+                ? 'border-purple-500 text-purple-400 bg-purple-950/80 rounded-t-lg'
+                : 'border-transparent text-purple-300 hover:text-white'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+            <span className="flex items-center gap-1.5">
+              <span>AI Store Automation</span>
+              <span className="text-[9px] bg-gradient-to-r from-purple-500 to-pink-500 text-white px-1.5 py-0.2 rounded-full font-black uppercase">
+                AI Auto
+              </span>
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('add')}
             className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
               activeTab === 'add'
@@ -1231,6 +1616,706 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             </div>
           )}
 
+          {activeTab === 'ai' && (
+            <div className="space-y-6">
+              {/* AI Automation Main Banner */}
+              <div className="p-5 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white rounded-2xl shadow-xl relative overflow-hidden border border-purple-500/30">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-[10px] font-black uppercase rounded-full shadow-xs tracking-wider flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        Gemini 3.6 Flash Engine
+                      </span>
+                      <span className="text-xs text-purple-300 font-semibold">• Store Catalog Automation</span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2 tracking-tight">
+                      <Bot className="w-6 h-6 text-purple-400" />
+                      AI Store Assistant & Auto-Publisher
+                    </h3>
+                    <p className="text-xs text-purple-200 max-w-2xl leading-relaxed">
+                      Give raw supplier data, notes, bullet points, or instructions — AI automatically generates titles, prices in PKR, sales copy, tags, features, and publishes or edits products directly in your store catalog!
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sub-Mode Selector */}
+                <div className="mt-5 pt-4 border-t border-purple-800/60 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiMode('create');
+                      setAiError(null);
+                      setAiSuccessMsg(null);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      aiMode === 'create'
+                        ? 'bg-purple-600 text-white shadow-md border border-purple-400'
+                        : 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/80 hover:text-white'
+                    }`}
+                  >
+                    <Wand2 className="w-3.5 h-3.5" />
+                    <span>1-Click AI Auto-Publish</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiMode('edit');
+                      setAiError(null);
+                      setAiSuccessMsg(null);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      aiMode === 'edit'
+                        ? 'bg-purple-600 text-white shadow-md border border-purple-400'
+                        : 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/80 hover:text-white'
+                    }`}
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    <span>AI Auto-Edit Existing Product</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiMode('batch');
+                      setAiError(null);
+                      setAiSuccessMsg(null);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      aiMode === 'batch'
+                        ? 'bg-purple-600 text-white shadow-md border border-purple-400'
+                        : 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/80 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Batch Multi-Product AI Generator</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Messages */}
+              {aiError && (
+                <div className="p-4 bg-rose-50 border-2 border-rose-200 text-rose-800 text-xs font-bold rounded-2xl flex items-start gap-3 shadow-xs animate-in fade-in">
+                  <X className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold block text-rose-900">AI Operation Error</span>
+                    <span>{aiError}</span>
+                  </div>
+                </div>
+              )}
+
+              {aiSuccessMsg && (
+                <div className="p-4 bg-emerald-50 border-2 border-emerald-300 text-emerald-900 text-xs font-bold rounded-2xl flex items-start gap-3 shadow-md animate-in fade-in">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-extrabold block text-emerald-950">Store Updated Live!</span>
+                    <span>{aiSuccessMsg}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE 1: CREATE & AUTO-PUBLISH */}
+              {aiMode === 'create' && (
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <Wand2 className="w-4 h-4 text-purple-600" />
+                        1-Click AI Product Generator & Auto-Publisher
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Enter raw product details or supplier notes. AI will structure, price, tag, and publish it live directly to your store.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-emerald-600 fill-emerald-600" /> Direct Auto-Publish On
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Raw Product Information / Supplier Specs / Voice Notes:
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={aiRawInput}
+                      onChange={(e) => setAiRawInput(e.target.value)}
+                      placeholder="e.g. Wireless Noise Cancelling Over-Ear Headphones, Bluetooth 5.3, 40-hour battery life, fast USB-C charging, comfortable memory foam pads, Matte Black & Silver colors, selling price 4500 PKR, original 6000 PKR, 25 items in stock, free delivery..."
+                      className="w-full p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:bg-white focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  {/* Custom Product Picture Block for AI Vision */}
+                  <div className="p-4 bg-purple-50/80 border border-purple-200/90 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-purple-700 shrink-0" />
+                        <span className="text-xs font-black text-purple-950">
+                          Attach Custom Product Picture (AI Vision Auto-Analyze)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        Custom Photo
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-purple-900/80 leading-relaxed font-medium">
+                      Upload your own product photo or paste an image URL. Gemini AI Vision will analyze your picture to write an exact title, specs, and sales copy matching the image!
+                    </p>
+
+                    {aiCustomImage ? (
+                      <div className="flex items-center gap-4 bg-white p-2.5 border border-purple-300 rounded-xl">
+                        <div className="relative group shrink-0">
+                          <img
+                            src={aiCustomImage}
+                            alt="Custom Product Photo"
+                            className="w-20 h-20 object-cover rounded-lg border border-purple-200 shadow-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAiCustomImage('')}
+                            className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white p-1 rounded-full shadow-md hover:bg-rose-700 transition-colors"
+                            title="Remove Photo"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" /> Photo Attached
+                          </span>
+                          <p className="text-[11px] text-slate-600">
+                            AI will analyze this picture & set it as the primary store image.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setAiCustomImage('')}
+                            className="text-[11px] font-bold text-rose-600 hover:underline"
+                          >
+                            Remove photo
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <label className="flex items-center justify-center gap-2 p-3 bg-white hover:bg-purple-100/50 border-2 border-dashed border-purple-300 hover:border-purple-500 rounded-xl cursor-pointer text-xs font-bold text-purple-900 transition-all shadow-2xs">
+                          <UploadCloud className="w-4 h-4 text-purple-600 shrink-0" />
+                          <span>{aiImageUploading ? 'Processing Photo...' : '📷 Upload Product Photo'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={aiImageUploading}
+                            onChange={handleAiImageUpload}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <div className="flex items-center bg-white border border-purple-300 rounded-xl px-3 py-2 shadow-2xs">
+                          <input
+                            type="url"
+                            value={aiCustomImage}
+                            onChange={(e) => setAiCustomImage(e.target.value)}
+                            placeholder="Or paste custom image URL..."
+                            className="w-full text-xs font-medium text-slate-800 focus:outline-none bg-transparent"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Preset Quick Fill Chips */}
+                  <div>
+                    <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                      Try Sample Prompts (1-Click Fill):
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        {
+                          label: '🎧 Wireless Earbuds',
+                          text: 'Pro Bluetooth 5.3 Earbuds with ANC, 30h battery, IPX5 waterproof, wireless charging case. Selling 2999 PKR, original 4500 PKR, 30 stock, free delivery.',
+                        },
+                        {
+                          label: '💼 Leather Laptop Bag',
+                          text: 'Premium Genuine Brown Leather Messenger Laptop Bag for 15.6 inch laptops, multiple zipped compartments, water resistant. Selling 3800 PKR, 15 stock.',
+                        },
+                        {
+                          label: '⌚ Smart Fitness Watch',
+                          text: 'AMOLED Smartwatch with HR sensor, SpO2 monitoring, 100+ sports modes, 7 day battery, IP68. Selling 4200 PKR, original 6000 PKR, 20 stock.',
+                        },
+                        {
+                          label: '☕ Herbal Green Tea Set',
+                          text: 'Organic Chamomile & Jasmine Herbal Green Tea Gift Box with 50 tea bags, antioxidant rich. Selling 1250 PKR, 50 stock.',
+                        },
+                      ].map((preset, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setAiRawInput(preset.text)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 rounded-lg text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      disabled={aiLoading}
+                      onClick={handleAiProcessProduct}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 text-white rounded-xl text-xs font-black shadow-lg shadow-purple-200 flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {aiLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>Generating & Publishing to Store...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                          <span>✨ Generate & Auto-Publish to Store</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE 2: EDIT EXISTING PRODUCT */}
+              {aiMode === 'edit' && (
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <Edit className="w-4 h-4 text-purple-600" />
+                        AI Auto-Edit Existing Product
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Select any of your listed products and tell AI what to update (prices, discounts, descriptions, stock, tags, features).
+                      </p>
+                    </div>
+                  </div>
+
+                  {myProducts.length === 0 ? (
+                    <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                      <p className="text-xs font-bold text-slate-500">
+                        You don't have any products in your store catalog yet.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setAiMode('create')}
+                        className="mt-3 px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded-xl"
+                      >
+                        Create Product with AI First
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          Select Product to Edit:
+                        </label>
+                        <select
+                          value={aiSelectedProdId}
+                          onChange={(e) => setAiSelectedProdId(e.target.value)}
+                          className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:bg-white focus:outline-none"
+                        >
+                          <option value="">-- Choose a Product from your Store --</option>
+                          {myProducts.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.title} — {formatPKR(p.price)} (Stock: {p.stock})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Custom Product Picture Block for AI Vision */}
+                      <div className="p-4 bg-purple-50/80 border border-purple-200/90 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4 text-purple-700 shrink-0" />
+                            <span className="text-xs font-black text-purple-950">
+                              New Custom Picture for AI Update (Optional)
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-black bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                            Replace Image
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-purple-900/80 leading-relaxed font-medium">
+                          Upload a new photo or paste an image URL if you want AI to replace this product's main image and adjust description according to the new picture!
+                        </p>
+
+                        {aiCustomImage ? (
+                          <div className="flex items-center gap-4 bg-white p-2.5 border border-purple-300 rounded-xl">
+                            <div className="relative group shrink-0">
+                              <img
+                                src={aiCustomImage}
+                                alt="Custom Product Photo"
+                                className="w-20 h-20 object-cover rounded-lg border border-purple-200 shadow-xs"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setAiCustomImage('')}
+                                className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white p-1 rounded-full shadow-md hover:bg-rose-700 transition-colors"
+                                title="Remove Photo"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 text-emerald-600" /> New Photo Attached
+                              </span>
+                              <p className="text-[11px] text-slate-600">
+                                This image will replace the current product picture.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setAiCustomImage('')}
+                                className="text-[11px] font-bold text-rose-600 hover:underline"
+                              >
+                                Remove photo
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <label className="flex items-center justify-center gap-2 p-3 bg-white hover:bg-purple-100/50 border-2 border-dashed border-purple-300 hover:border-purple-500 rounded-xl cursor-pointer text-xs font-bold text-purple-900 transition-all shadow-2xs">
+                              <UploadCloud className="w-4 h-4 text-purple-600 shrink-0" />
+                              <span>{aiImageUploading ? 'Processing Photo...' : '📷 Upload New Photo'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={aiImageUploading}
+                                onChange={handleAiImageUpload}
+                                className="hidden"
+                              />
+                            </label>
+
+                            <div className="flex items-center bg-white border border-purple-300 rounded-xl px-3 py-2 shadow-2xs">
+                              <input
+                                type="url"
+                                value={aiCustomImage}
+                                onChange={(e) => setAiCustomImage(e.target.value)}
+                                placeholder="Or paste image URL to update..."
+                                className="w-full text-xs font-medium text-slate-800 focus:outline-none bg-transparent"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                          AI Edit Instruction / Modification Prompt:
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={aiEditInstruction}
+                          onChange={(e) => setAiEditInstruction(e.target.value)}
+                          placeholder="e.g. Lower price to 2499 PKR for Eid sale, set original price to 3500 PKR, update stock to 50, rewrite description to sound bulleted and premium..."
+                          className="w-full p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:bg-white focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      {/* Quick Edit Instruction Chips */}
+                      <div>
+                        <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block mb-2">
+                          Quick Instructions:
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            '🏷️ Apply 15% discount & set price',
+                            '📦 Increase stock quantity to 50',
+                            '✨ Add 5 premium feature bullet points',
+                            '🚚 Enable Free Delivery for this item',
+                            '🔥 Mark as Flash Sale deal',
+                          ].map((chip, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setAiEditInstruction(chip)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 rounded-lg text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+                            >
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-end">
+                        <button
+                          type="button"
+                          disabled={aiLoading || !aiSelectedProdId}
+                          onClick={handleAiProcessProduct}
+                          className="px-6 py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 text-white rounded-xl text-xs font-black shadow-lg shadow-purple-200 flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                        >
+                          {aiLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin text-white" />
+                              <span>AI Updating Product...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                              <span>⚡ AI Auto-Update Product</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* MODE 3: BATCH MULTI-PRODUCT GENERATOR WITH CUSTOM PICTURES */}
+              {aiMode === 'batch' && (
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <Layers className="w-4.5 h-4.5 text-purple-600" />
+                        Batch Multi-Product AI Auto-Publisher
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Generate and publish multiple products at once! Add custom photos for each product or upload a bulk set of photos for AI Vision auto-analysis.
+                      </p>
+                    </div>
+
+                    {/* Batch Input Mode Selector */}
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setBatchModeType('structured')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          batchModeType === 'structured'
+                            ? 'bg-white text-purple-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Cards with Photos</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBatchModeType('text')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          batchModeType === 'text'
+                            ? 'bg-white text-purple-700 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Edit className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Line Text List</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {batchModeType === 'structured' ? (
+                    <div className="space-y-4">
+                      {/* Bulk Multi-Photo Upload Dropzone */}
+                      <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50/50 to-purple-50 border border-purple-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="space-y-1 text-center sm:text-left">
+                          <span className="text-xs font-black text-purple-950 flex items-center justify-center sm:justify-start gap-1.5">
+                            <Sparkles className="w-4 h-4 text-purple-600" />
+                            Bulk Upload Photos for Different Products
+                          </span>
+                          <p className="text-[11px] text-purple-800/80 font-medium">
+                            Select 2 to 10 product photos from your device at once. AI Vision will analyze each picture, extract product details, and auto-list them all!
+                          </p>
+                        </div>
+
+                        <label className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all shrink-0 flex items-center gap-2">
+                          <UploadCloud className="w-4 h-4" />
+                          <span>{aiImageUploading ? 'Processing Photos...' : '📷 Bulk Upload Photos'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={aiImageUploading}
+                            onChange={handleBatchMultiPhotoUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Individual Product Items Cards List */}
+                      <div className="space-y-3">
+                        {batchItems.map((item, index) => (
+                          <div
+                            key={item.id}
+                            className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 hover:border-purple-300 transition-all"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-slate-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                Product #{index + 1}
+                              </span>
+
+                              {batchItems.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveBatchItem(item.id)}
+                                  className="text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg transition-colors flex items-center gap-1"
+                                  title="Remove this product item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Remove Item</span>
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              {/* Left 2 cols: Product Notes / Title */}
+                              <div className="md:col-span-2 space-y-1.5">
+                                <label className="block text-[11px] font-bold text-slate-700">
+                                  Product Details / Title / Price Notes:
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  value={item.text}
+                                  onChange={(e) =>
+                                    setBatchItems((prev) =>
+                                      prev.map((it) => (it.id === item.id ? { ...it, text: e.target.value } : it))
+                                    )
+                                  }
+                                  placeholder={`e.g. Smart Watch Series 9, Black, AMOLED Display, 4500 PKR, 25 Stock`}
+                                  className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                                />
+                              </div>
+
+                              {/* Right col: Custom Picture Attachment */}
+                              <div className="space-y-1.5">
+                                <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                                  <ImageIcon className="w-3.5 h-3.5 text-purple-600" />
+                                  <span>Product Picture:</span>
+                                </label>
+
+                                {item.customImage ? (
+                                  <div className="relative group bg-white p-2 border border-purple-200 rounded-xl flex items-center gap-3">
+                                    <img
+                                      src={item.customImage}
+                                      alt={`Product ${index + 1}`}
+                                      className="w-14 h-14 object-cover rounded-lg border border-slate-200 shrink-0"
+                                    />
+                                    <div className="space-y-1 min-w-0 flex-1">
+                                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full inline-block truncate">
+                                        ✓ Photo Attached
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setBatchItems((prev) =>
+                                            prev.map((it) => (it.id === item.id ? { ...it, customImage: '' } : it))
+                                          )
+                                        }
+                                        className="text-[11px] font-bold text-rose-600 hover:underline block"
+                                      >
+                                        Remove photo
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <label className="flex items-center justify-center gap-2 p-2.5 bg-white hover:bg-purple-50 border border-dashed border-purple-300 rounded-xl cursor-pointer text-xs font-bold text-purple-900 transition-all shadow-2xs">
+                                      <UploadCloud className="w-4 h-4 text-purple-600 shrink-0" />
+                                      <span>Upload Photo</span>
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={aiImageUploading}
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0];
+                                          if (file) handleBatchItemImageUpload(item.id, file);
+                                        }}
+                                        className="hidden"
+                                      />
+                                    </label>
+
+                                    <input
+                                      type="url"
+                                      value={item.customImage}
+                                      onChange={(e) =>
+                                        setBatchItems((prev) =>
+                                          prev.map((it) => (it.id === item.id ? { ...it, customImage: e.target.value } : it))
+                                        )
+                                      }
+                                      placeholder="Or paste image URL..."
+                                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-medium focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={handleAddBatchItem}
+                          className="px-4 py-2 bg-slate-100 hover:bg-purple-100 text-slate-800 hover:text-purple-900 rounded-xl text-xs font-bold border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4 text-purple-600" />
+                          <span>Add Another Product Card</span>
+                        </button>
+
+                        <span className="text-xs font-medium text-slate-500">
+                          Total Items: {batchItems.filter((it) => it.text.trim() || it.customImage).length} Product(s)
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Batch Product List (Line by Line):
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={aiBatchInput}
+                        onChange={(e) => setAiBatchInput(e.target.value)}
+                        placeholder={`1. Smart Watch Series 9, AMOLED display, 4500 PKR, 20 stock\n2. Genuine Leather Men Wallet, Brown, 1500 PKR, 35 stock\n3. Wireless Gaming Mouse RGB 3200 DPI, 2200 PKR, 15 stock\n4. Stainless Steel Thermal Water Bottle 750ml, 1800 PKR, 40 stock`}
+                        className="w-full p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:ring-2 focus:ring-purple-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      disabled={
+                        aiLoading ||
+                        (batchModeType === 'structured'
+                          ? batchItems.filter((it) => it.text.trim() || it.customImage).length === 0
+                          : !aiBatchInput.trim())
+                      }
+                      onClick={handleAiBatchGenerate}
+                      className="px-6 py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 text-white rounded-xl text-xs font-black shadow-lg shadow-purple-200 flex items-center gap-2 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {aiLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>AI Generating & Auto-Publishing Batch...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                          <span>🚀 Batch AI Generate & Publish All ({batchModeType === 'structured' ? batchItems.filter((it) => it.text.trim() || it.customImage).length : 'Multi'} Items)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'shopify' && (
             <ShopifyImporter
               onSuccess={(count) => {
@@ -1288,6 +2373,48 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                 <span className="text-[10px] font-extrabold bg-[#FF5500] text-white px-2.5 py-1 rounded-full uppercase shrink-0">
                   3% Fee
                 </span>
+              </div>
+
+              {/* AI Quick Auto-Fill Form Box */}
+              <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border-2 border-purple-300 rounded-2xl shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-600 animate-pulse" />
+                    <span className="text-xs font-black text-purple-900">
+                      AI Instant Form Auto-Fill
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                    Gemini AI
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={aiFormPrompt}
+                    onChange={(e) => setAiFormPrompt(e.target.value)}
+                    placeholder="Type raw product title/specs (e.g. Smart Watch Series 8 black 3500 PKR)..."
+                    className="flex-1 px-3 py-2 bg-white border border-purple-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={aiFormLoading}
+                    onClick={handleAiFormFill}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    {aiFormLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>AI Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-3.5 h-3.5" />
+                        <span>✨ Auto-Fill Form</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Courier Delivery & Support Notice */}
@@ -1661,6 +2788,20 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiSelectedProdId(p.id);
+                          setAiMode('edit');
+                          setActiveTab('ai');
+                        }}
+                        className="px-2 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold border border-purple-200 shrink-0"
+                        title="Edit with AI Assistant"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
+                        <span className="hidden sm:inline">AI Edit</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleOpenEditProduct(p)}
