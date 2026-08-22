@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider, useCart } from './context/CartContext';
+import { ChatProvider, useChat } from './context/ChatContext';
 import { Header } from './components/Header';
 import { BannerSlider } from './components/BannerSlider';
 import { FlashSale } from './components/FlashSale';
 import { CategoryGrid } from './components/CategoryGrid';
 import { ProductCard } from './components/ProductCard';
 import { ProductDetailModal } from './components/ProductDetailModal';
+import { CustomerChatModal } from './components/CustomerChatModal';
 import { AuthModal } from './components/AuthModal';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
+import { CheckoutSuccessToast } from './components/CheckoutSuccessToast';
 import { SellerDashboard } from './components/SellerDashboard';
 import { OrdersModal } from './components/OrdersModal';
 import { WishlistModal } from './components/WishlistModal';
@@ -47,11 +50,13 @@ import {
   Star,
   MessageSquare,
 } from 'lucide-react';
+import { PriceFilterBar, PriceFilterState } from './components/PriceFilterBar';
 import { getShareableProductUrl, getShareableStoreUrl, shareUrl } from './utils/share';
 
 function MarketplaceMain() {
   const { currentUser, userProfile } = useAuth();
   const { addToCart, syncProducts } = useCart();
+  const { openCustomerChatWithSeller } = useChat();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -62,6 +67,15 @@ function MarketplaceMain() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'popular' | 'lowToHigh' | 'highToLow' | 'newest'>('popular');
   const [storeShareCopied, setStoreShareCopied] = useState(false);
+
+  // Advanced Price & Discovery Filters State
+  const [priceFilter, setPriceFilter] = useState<PriceFilterState>({
+    minPrice: null,
+    maxPrice: null,
+    inStockOnly: false,
+    freeDeliveryOnly: false,
+    minRating: null,
+  });
 
   // Modals
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -271,20 +285,49 @@ function MarketplaceMain() {
     }
   }, [products]);
 
+  // Dynamic price bounds across all active catalog products
+  const allProductPrices = products
+    .map((p) => (typeof p.price === 'number' ? p.price : 0))
+    .filter((pr) => pr > 0);
+  const absoluteMinPrice = allProductPrices.length > 0 ? Math.floor(Math.min(...allProductPrices)) : 0;
+  const absoluteMaxPrice = allProductPrices.length > 0 ? Math.ceil(Math.max(...allProductPrices)) : 50000;
+
   // Filtered and Sorted Products
   const filteredProducts = products.filter((p) => {
     if (!p) return false;
     const matchesStore = !selectedStoreId || p.sellerId === selectedStoreId;
     const matchesCategory = !selectedCategory || p.category === selectedCategory;
+
+    // Price Filtering
+    const itemPrice = typeof p.price === 'number' ? p.price : 0;
+    const matchesMinPrice = priceFilter.minPrice === null || itemPrice >= priceFilter.minPrice;
+    const matchesMaxPrice = priceFilter.maxPrice === null || itemPrice <= priceFilter.maxPrice;
+
+    // Discovery & Availability Filters
+    const matchesStock = !priceFilter.inStockOnly || (typeof p.stock === 'number' && p.stock > 0);
+    const matchesDelivery = !priceFilter.freeDeliveryOnly || (typeof p.deliveryFee !== 'number' || p.deliveryFee === 0);
+    const matchesRating = priceFilter.minRating === null || (typeof p.rating === 'number' && p.rating >= priceFilter.minRating);
+
     const searchLower = searchQuery.toLowerCase().trim();
-    if (!searchLower) return matchesStore && matchesCategory;
+    if (!searchLower) {
+      return matchesStore && matchesCategory && matchesMinPrice && matchesMaxPrice && matchesStock && matchesDelivery && matchesRating;
+    }
 
     const titleMatch = (p.title || '').toLowerCase().includes(searchLower);
     const descMatch = (p.description || '').toLowerCase().includes(searchLower);
     const sellerMatch = (p.sellerName || '').toLowerCase().includes(searchLower);
     const tagMatch = Array.isArray(p.tags) && p.tags.some((tag) => tag.toLowerCase().includes(searchLower));
 
-    return matchesStore && matchesCategory && (titleMatch || descMatch || sellerMatch || tagMatch);
+    return (
+      matchesStore &&
+      matchesCategory &&
+      matchesMinPrice &&
+      matchesMaxPrice &&
+      matchesStock &&
+      matchesDelivery &&
+      matchesRating &&
+      (titleMatch || descMatch || sellerMatch || tagMatch)
+    );
   });
 
   const storeProducts = selectedStoreId ? products.filter((p) => p.sellerId === selectedStoreId) : [];
@@ -305,6 +348,29 @@ function MarketplaceMain() {
     const salesB = typeof b.salesCount === 'number' ? b.salesCount : 0;
     return salesB - salesA; // 'popular'
   });
+
+  const handleClearAllFilters = () => {
+    setSelectedCategory(null);
+    setSearchQuery('');
+    handleSelectStore(null);
+    setPriceFilter({
+      minPrice: null,
+      maxPrice: null,
+      inStockOnly: false,
+      freeDeliveryOnly: false,
+      minRating: null,
+    });
+  };
+
+  const hasAnyFilterActive =
+    Boolean(selectedCategory) ||
+    Boolean(searchQuery) ||
+    Boolean(selectedStoreId) ||
+    priceFilter.minPrice !== null ||
+    priceFilter.maxPrice !== null ||
+    priceFilter.inStockOnly ||
+    priceFilter.freeDeliveryOnly ||
+    priceFilter.minRating !== null;
 
   const handleBuyNow = (product: Product, quantity: number) => {
     addToCart(product, quantity);
@@ -384,22 +450,18 @@ function MarketplaceMain() {
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-8">
         {/* Prominent Back Button (Visible when viewing category, store, or search results) */}
-        {(selectedCategory || searchQuery || selectedStoreId) && (
+        {hasAnyFilterActive && (
           <div className="flex items-center justify-between bg-white p-3.5 px-5 rounded-2xl border border-slate-200/80 shadow-xs animate-in fade-in duration-150">
             <button
-              onClick={() => {
-                setSelectedCategory(null);
-                setSearchQuery('');
-                handleSelectStore(null);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all transform active:scale-98"
+              onClick={handleClearAllFilters}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all transform active:scale-98 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4 text-[#FF9900]" />
-              <span>← Back to All Products</span>
+              <span>← Reset All Filters & View All Products</span>
             </button>
 
             <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-              Currently viewing: <strong className="text-slate-800 font-bold">{selectedStoreId ? storeName : selectedCategory ? CATEGORIES.find(c=>c.id===selectedCategory)?.name : `Search: "${searchQuery}"`}</strong>
+              Active discovery view: <strong className="text-slate-800 font-bold">{selectedStoreId ? storeName : selectedCategory ? CATEGORIES.find(c=>c.id===selectedCategory)?.name : searchQuery ? `Search: "${searchQuery}"` : 'Custom Price Filter'}</strong>
             </span>
           </div>
         )}
@@ -447,7 +509,20 @@ function MarketplaceMain() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedStoreId) {
+                      openCustomerChatWithSeller(selectedStoreId, storeName);
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-md transition-all shrink-0 cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Chat with Seller</span>
+                </button>
+
                 <button
                   onClick={async () => {
                     const url = getShareableStoreUrl(selectedStoreId);
@@ -575,6 +650,16 @@ function MarketplaceMain() {
 
         {/* Marketplace Items Grid */}
         <div className="space-y-4">
+          {/* Price Range Slider & Discovery Filters */}
+          <PriceFilterBar
+            absoluteMin={absoluteMinPrice}
+            absoluteMax={absoluteMaxPrice}
+            filterState={priceFilter}
+            onFilterChange={setPriceFilter}
+            totalMatching={sortedProducts.length}
+            totalProducts={products.length}
+          />
+
           {/* Section Header with Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
             <div>
@@ -596,17 +681,13 @@ function MarketplaceMain() {
             </div>
 
             <div className="flex items-center gap-3 text-xs">
-              {/* Category / Store Clear Badge */}
-              {(selectedCategory || searchQuery || selectedStoreId) && (
+              {/* Category / Store / Price Clear Badge */}
+              {hasAnyFilterActive && (
                 <button
-                  onClick={() => {
-                    setSelectedCategory(null);
-                    setSearchQuery('');
-                    handleSelectStore(null);
-                  }}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold rounded-lg transition-colors"
+                  onClick={handleClearAllFilters}
+                  className="px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold rounded-lg transition-colors cursor-pointer"
                 >
-                  Clear Filters ✕
+                  Clear All Filters ✕
                 </button>
               )}
 
@@ -646,26 +727,22 @@ function MarketplaceMain() {
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 space-y-4 shadow-2xs">
               <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto" />
               <h3 className="text-base font-bold text-slate-800">
-                {selectedCategory || searchQuery || selectedStoreId
-                  ? 'No products match your search or store filter'
+                {hasAnyFilterActive
+                  ? 'No products match your price range or filter criteria'
                   : 'No Products Listed Yet'}
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                {selectedCategory || searchQuery || selectedStoreId
-                  ? 'Try searching for a different item or clear filters.'
+                {hasAnyFilterActive
+                  ? 'Try adjusting your min/max price range, clearing price presets, or resetting filters.'
                   : 'The marketplace currently has no active product listings. Click below to add your first product listing as a seller!'}
               </p>
               <div className="flex justify-center gap-3">
-                {(selectedCategory || searchQuery || selectedStoreId) && (
+                {hasAnyFilterActive && (
                   <button
-                    onClick={() => {
-                      setSelectedCategory(null);
-                      setSearchQuery('');
-                      handleSelectStore(null);
-                    }}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+                    onClick={handleClearAllFilters}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
                   >
-                    Clear Filters
+                    Clear All Filters
                   </button>
                 )}
                 <button
@@ -673,7 +750,7 @@ function MarketplaceMain() {
                     if (!currentUser) setAuthModalOpen(true);
                     else setSellerDashboardOpen(true);
                   }}
-                  className="px-5 py-2.5 bg-[#FF5500] text-white text-xs font-bold rounded-xl hover:bg-[#E04400] transition-colors flex items-center gap-2 mx-auto"
+                  className="px-5 py-2.5 bg-[#FF5500] text-white text-xs font-bold rounded-xl hover:bg-[#E04400] transition-colors flex items-center gap-2 mx-auto cursor-pointer"
                 >
                   <Store className="w-4 h-4" />
                   <span>List a Product on Cart Go</span>
@@ -780,6 +857,14 @@ function MarketplaceMain() {
         onClose={() => setCheckoutModalOpen(false)}
         onOrderSuccess={handleOrderSuccess}
       />
+      <CheckoutSuccessToast
+        orderId={orderSuccessId}
+        onClose={() => setOrderSuccessId(null)}
+        onViewOrder={(_id) => {
+          setOrderSuccessId(null);
+          setOrdersModalOpen(true);
+        }}
+      />
       <SellerDashboard
         isOpen={sellerDashboardOpen}
         onClose={() => setSellerDashboardOpen(false)}
@@ -807,6 +892,10 @@ function MarketplaceMain() {
         onClose={() => handleSelectProduct(null)}
         onBuyNow={handleBuyNow}
         onSelectStore={handleSelectStore}
+      />
+      <CustomerChatModal
+        onOpenProduct={(prod) => handleSelectProduct(prod)}
+        onOpenStore={(storeId) => handleSelectStore(storeId)}
       />
 
       {/* Sticky Mobile Bottom Navigation Bar for easy 1-click access to Login/Register */}
@@ -839,7 +928,9 @@ export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <MarketplaceMain />
+        <ChatProvider>
+          <MarketplaceMain />
+        </ChatProvider>
       </CartProvider>
     </AuthProvider>
   );

@@ -35,11 +35,19 @@ import {
   RefreshCw,
   Layers,
   Loader2,
+  Users,
+  UserPlus,
+  Shield,
+  Key,
+  MessageSquare,
 } from 'lucide-react';
 import { ShopifyImporter } from './ShopifyImporter';
 import { ProductTagManager } from './ProductTagManager';
 import { ProductVideoManager } from './ProductVideoManager';
+import { StoreManagersTab } from './StoreManagersTab';
+import { SellerChatTab } from './SellerChatTab';
 import { useAuth } from '../context/AuthContext';
+import { useChat } from '../context/ChatContext';
 import { Product, Order, OrderStatus, SellerNotification, ProductVariant } from '../types';
 import { CATEGORIES } from '../data/categories';
 
@@ -248,7 +256,17 @@ const PRESET_IMAGES = [
 
 export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClose, onOpenAdmin }) => {
   const { currentUser, userProfile, isAdmin, updateUserProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'ai' | 'add' | 'shopify' | 'products' | 'store' | 'orders' | 'notifications' | 'about'>('ai');
+  const { totalUnreadForSeller } = useChat();
+  const [activeTab, setActiveTab] = useState<'ai' | 'add' | 'shopify' | 'products' | 'chat' | 'store' | 'managers' | 'orders' | 'notifications' | 'about'>('ai');
+
+  const isStoreManager = userProfile?.role === 'manager';
+  const isStoreOwner = userProfile?.role === 'seller' || isAdmin;
+  const effectiveSellerId = isStoreManager
+    ? (userProfile?.storeId || userProfile?.storeOwnerId || currentUser?.uid || '')
+    : (currentUser?.uid || '');
+  const effectiveStoreName = isStoreManager
+    ? (userProfile?.storeName || 'Assigned Store')
+    : (userProfile?.displayName || 'My Store');
 
   // AI Store Automation State
   const [aiMode, setAiMode] = useState<'create' | 'edit' | 'batch'>('create');
@@ -555,8 +573,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         variants: validVariants,
         tags: editTags,
         videoUrl: editVideoUrl.trim() || '',
-        sellerId: editingProduct.sellerId || currentUser.uid,
-        sellerName: userProfile?.displayName || storeNameInput || editingProduct.sellerName || 'Verified Cart Go Seller',
+        sellerId: editingProduct.sellerId || effectiveSellerId,
+        sellerName: editingProduct.sellerName || effectiveStoreName || userProfile?.displayName || storeNameInput || 'Verified Cart Go Seller',
         sellerPhone: sellerPhone || storePhoneInput || editingProduct.sellerPhone || '',
         updatedAt: new Date().toISOString(),
       };
@@ -582,8 +600,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   };
 
   const handleShareMyStore = async () => {
-    if (!currentUser) return;
-    const url = getShareableStoreUrl(currentUser.uid);
+    if (!currentUser || !effectiveSellerId) return;
+    const url = getShareableStoreUrl(effectiveSellerId);
     const result = await shareUrl({
       title: `${userProfile?.displayName || 'Merchant'}'s Store on Cart Go`,
       text: `Visit my store on Cart Go to check out my latest products!`,
@@ -889,8 +907,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
           category: aiProduct.category || 'electronics',
           imageUrl: aiCustomImage || aiProduct.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
           stock: typeof aiProduct.stock === 'number' ? aiProduct.stock : 20,
-          sellerId: currentUser?.uid || 'anonymous',
-          sellerName: userProfile?.displayName || storeNameInput || 'Cart Go Seller',
+          sellerId: effectiveSellerId || currentUser?.uid || 'anonymous',
+          sellerName: effectiveStoreName || userProfile?.displayName || storeNameInput || 'Cart Go Seller',
           sellerPhone: userProfile?.phone || storePhoneInput || '',
           rating: 5.0,
           reviewCount: 0,
@@ -978,8 +996,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
           category: item.category || 'electronics',
           imageUrl: item.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
           stock: typeof item.stock === 'number' ? item.stock : 15,
-          sellerId: currentUser?.uid || 'anonymous',
-          sellerName: userProfile?.displayName || storeNameInput || 'Cart Go Seller',
+          sellerId: effectiveSellerId || currentUser?.uid || 'anonymous',
+          sellerName: effectiveStoreName || userProfile?.displayName || storeNameInput || 'Cart Go Seller',
           sellerPhone: userProfile?.phone || storePhoneInput || '',
           rating: 5.0,
           reviewCount: 0,
@@ -1053,10 +1071,10 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
   };
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !effectiveSellerId) return;
 
-    // Fetch Seller Products
-    const qProd = query(collection(db, 'products'), where('sellerId', '==', currentUser.uid));
+    // Fetch Seller Products (for store owner or assigned store manager)
+    const qProd = query(collection(db, 'products'), where('sellerId', '==', effectiveSellerId));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
       const list: Product[] = [];
       snapshot.forEach((docSnap) => {
@@ -1065,13 +1083,13 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       setMyProducts(list);
     }, (err) => console.warn('Seller products listener error:', err));
 
-    // Fetch All Orders to filter items belonging to this seller
+    // Fetch All Orders to filter items belonging to this store
     const qOrders = query(collection(db, 'orders'));
     const unsubOrders = onSnapshot(qOrders, (snapshot) => {
       const list: Order[] = [];
       snapshot.forEach((docSnap) => {
         const orderData = { id: docSnap.id, ...docSnap.data() } as Order;
-        const sellerItems = orderData.items.filter((item) => item.sellerId === currentUser.uid);
+        const sellerItems = orderData.items.filter((item) => item.sellerId === effectiveSellerId);
         if (sellerItems.length > 0) {
           list.push({ ...orderData, items: sellerItems });
         }
@@ -1085,7 +1103,11 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       const list: SellerNotification[] = [];
       snapshot.forEach((docSnap) => {
         const notifData = { id: docSnap.id, ...docSnap.data() } as SellerNotification;
-        if (notifData.recipientId === 'all' || notifData.recipientId === currentUser.uid) {
+        if (
+          notifData.recipientId === 'all' ||
+          notifData.recipientId === currentUser.uid ||
+          notifData.recipientId === effectiveSellerId
+        ) {
           list.push(notifData);
         }
       });
@@ -1098,7 +1120,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
       unsubOrders();
       unsubNotifs();
     };
-  }, [currentUser]);
+  }, [currentUser, effectiveSellerId]);
 
   if (!isOpen) return null;
 
@@ -1165,8 +1187,8 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         category,
         imageUrl: finalMainImage,
         stock: parsedStock,
-        sellerId: currentUser.uid,
-        sellerName: userProfile?.displayName || 'Cart Go Seller',
+        sellerId: effectiveSellerId,
+        sellerName: effectiveStoreName,
         sellerPhone: contactPhone.trim(),
         rating: 5.0,
         reviewCount: 0,
@@ -1281,10 +1303,19 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-bold flex items-center gap-2 truncate">
-                <span>Cart Go Seller Center</span>
+                <span>{isStoreManager ? 'Store Manager Portal' : 'Cart Go Seller Center'}</span>
+                {isStoreManager && (
+                  <span className="bg-blue-500/30 text-blue-300 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/40 uppercase">
+                    Manager Access
+                  </span>
+                )}
               </h2>
               <p className="text-[10px] sm:text-xs text-slate-400 truncate">
-                Logged in as <span className="text-[#FF9900] font-semibold">{userProfile?.displayName || 'Merchant'}</span>
+                {isStoreManager ? (
+                  <>Managing: <strong className="text-white">{effectiveStoreName}</strong> (Logged in as <span className="text-[#FF9900] font-semibold">{userProfile?.displayName || userProfile?.email}</span>)</>
+                ) : (
+                  <>Logged in as <span className="text-[#FF9900] font-semibold">{userProfile?.displayName || 'Merchant'}</span></>
+                )}
               </p>
             </div>
           </div>
@@ -1383,17 +1414,33 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             <span>My Listings ({myProducts.length})</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('store')}
-            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
-              activeTab === 'store'
-                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Store className="w-4 h-4" />
-            <span>Edit Store Profile</span>
-          </button>
+          {!isStoreManager && (
+            <button
+              onClick={() => setActiveTab('store')}
+              className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+                activeTab === 'store'
+                  ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                  : 'border-transparent text-slate-400 hover:text-white'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>Edit Store Profile</span>
+            </button>
+          )}
+
+          {isStoreOwner && (
+            <button
+              onClick={() => setActiveTab('managers')}
+              className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
+                activeTab === 'managers'
+                  ? 'border-blue-500 text-blue-400 bg-blue-950/80 rounded-t-lg'
+                  : 'border-transparent text-blue-300 hover:text-white'
+              }`}
+            >
+              <Users className="w-4 h-4 text-blue-400" />
+              <span>Store Managers</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('orders')}
@@ -1405,6 +1452,23 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
           >
             <ShoppingBag className="w-4 h-4" />
             <span>Received Orders ({sellerOrders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`py-2.5 px-3.5 text-xs font-extrabold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 relative ${
+              activeTab === 'chat'
+                ? 'border-[#FF5500] text-[#FF5500] bg-slate-800/80 rounded-t-lg'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-[#FF9900]" />
+            <span>Live Customer Chat</span>
+            {totalUnreadForSeller > 0 && (
+              <span className="px-1.5 py-0.5 bg-[#FF5500] text-white text-[9px] font-black rounded-full animate-pulse">
+                {totalUnreadForSeller} new
+              </span>
+            )}
           </button>
 
           <button
@@ -1438,7 +1502,7 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
         {/* Smooth Scrollable Main Body Content Area */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 scroll-smooth bg-white">
           {/* Stats Strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200">
             <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
               <div className="p-2.5 rounded-lg bg-orange-50 text-[#FF5500]">
                 <Package className="w-5 h-5" />
@@ -1459,12 +1523,36 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setActiveTab('chat')}
+              className="bg-white p-3 rounded-xl border border-slate-200 hover:border-[#FF5500] flex items-center gap-3 text-left transition-all cursor-pointer group"
+            >
+              <div className="p-2.5 rounded-lg bg-purple-50 text-purple-600 group-hover:bg-orange-50 group-hover:text-[#FF5500] transition-colors relative">
+                <MessageSquare className="w-5 h-5" />
+                {totalUnreadForSeller > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#FF5500] animate-pulse"></span>
+                )}
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Customer Chats</span>
+                <div className="text-base font-extrabold text-slate-900 flex items-center gap-1.5">
+                  <span>Chat Hub</span>
+                  {totalUnreadForSeller > 0 && (
+                    <span className="px-1.5 py-0.2 bg-[#FF5500] text-white text-[9px] font-black rounded-full">
+                      {totalUnreadForSeller}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </button>
+
             <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3">
               <div className="p-2.5 rounded-lg bg-blue-50 text-blue-600">
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 font-bold uppercase">Total Sales Revenue</span>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Total Revenue</span>
                 <div className="text-base font-extrabold text-[#FF5500]">{formatPKR(totalEarnings)}</div>
               </div>
             </div>
@@ -2947,6 +3035,15 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
             </form>
           )}
 
+          {activeTab === 'managers' && isStoreOwner && (
+            <StoreManagersTab
+              currentUser={currentUser}
+              userProfile={userProfile}
+              effectiveStoreId={effectiveSellerId}
+              effectiveStoreName={effectiveStoreName}
+            />
+          )}
+
           {activeTab === 'orders' && (
             <div className="space-y-4">
               {sellerOrders.length === 0 ? (
@@ -3055,6 +3152,12 @@ export const SellerDashboard: React.FC<SellerDashboardProps> = ({ isOpen, onClos
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {activeTab === 'chat' && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <SellerChatTab products={myProducts} />
             </div>
           )}
 

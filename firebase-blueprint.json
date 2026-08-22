@@ -76,6 +76,51 @@
         "createdAt": { "type": "string" }
       },
       "required": ["userId", "title", "message"]
+    },
+    "conversations": {
+      "title": "Conversations",
+      "description": "Live chat conversation threads between buyers and sellers",
+      "type": "object",
+      "properties": {
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "buyerEmail": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastMessageAt": { "type": "string" },
+        "lastSenderId": { "type": "string" },
+        "unreadBuyerCount": { "type": "number" },
+        "unreadSellerCount": { "type": "number" },
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "productImage": { "type": "string" },
+        "productPrice": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["buyerId", "sellerId", "lastMessage"]
+    },
+    "messages": {
+      "title": "Messages",
+      "description": "Individual live chat messages between customer and seller",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "text": { "type": "string" },
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "productImage": { "type": "string" },
+        "productPrice": { "type": "number" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["conversationId", "senderId", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -98,6 +143,14 @@
     "/notifications/{notifId}": {
       "schema": { "$ref": "#/entities/notifications" },
       "description": "User notifications collection"
+    },
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/conversations" },
+      "description": "Chat conversations collection"
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/messages" },
+      "description": "Chat messages collection"
     }
   }
 }

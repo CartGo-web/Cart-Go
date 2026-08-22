@@ -23,6 +23,19 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Download,
+  FolderArchive,
+  Code2,
+  FileCode,
+  Folder,
+  FileText,
+  CheckCircle,
+  HardDrive,
+  Terminal,
+  Copy,
+  Check,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
 import {
   collection,
@@ -49,7 +62,7 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose }) => {
   const { isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<'sellers' | 'analytics' | 'notifications'>('sellers');
+  const [activeTab, setActiveTab] = useState<'sellers' | 'analytics' | 'notifications' | 'code' | 'email'>('sellers');
 
   // Data States
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
@@ -58,6 +71,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [notificationsList, setNotificationsList] = useState<SellerNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Email & SMTP Test States
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message?: string; error?: string; configured?: boolean } | null>(null);
+  const [smtpStatus, setSmtpStatus] = useState<{ sender: string; configured: boolean } | null>(null);
+
+  // Source Code Download & Stats State
+  const [downloadingCode, setDownloadingCode] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [codeStats, setCodeStats] = useState<{
+    fileCount: number;
+    totalSizeBytes: number;
+    totalSizeKB: number;
+    files: { path: string; size: number }[];
+    exportedAt: string;
+  } | null>(null);
+  const [loadingCodeStats, setLoadingCodeStats] = useState(false);
+  const [codeFileSearch, setCodeFileSearch] = useState('');
+  const [copiedCommand, setCopiedCommand] = useState(false);
 
   // Analytics Filters
   const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -83,14 +117,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
   const [selectedUserForPasswordChange, setSelectedUserForPasswordChange] = useState<UserProfile | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [showPasswordText, setShowPasswordText] = useState(false);
+  const [showCurrentPasswordText, setShowCurrentPasswordText] = useState(false);
   const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState<string | null>(null);
   const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+
+  // Super Admin In-Table Password Visibility Map
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
+
+  const togglePasswordVisibility = (uid: string) => {
+    setRevealedPasswords((prev) => ({
+      ...prev,
+      [uid]: !prev[uid],
+    }));
+  };
+
+  const handleCopyUserPassword = (user: UserProfile) => {
+    const pass = user.customPassword || user.registeredPassword || 'CartGo2026!';
+    navigator.clipboard.writeText(pass);
+    setCopiedPasswordId(user.uid);
+    setTimeout(() => setCopiedPasswordId(null), 2000);
+  };
 
   const handleOpenPasswordModal = (user: UserProfile) => {
     setSelectedUserForPasswordChange(user);
     setNewPasswordInput('');
     setShowPasswordText(false);
+    setShowCurrentPasswordText(false);
     setPasswordChangeSuccess(null);
     setPasswordChangeError(null);
   };
@@ -253,6 +307,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchCodeStats = async () => {
+    setLoadingCodeStats(true);
+    try {
+      const res = await fetch('/api/admin/code-stats');
+      if (res.ok) {
+        const data = await res.json();
+        setCodeStats(data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch code stats:', e);
+    } finally {
+      setLoadingCodeStats(false);
+    }
+  };
+
+  const handleDownloadSourceCode = async () => {
+    setDownloadingCode(true);
+    setDownloadSuccess(null);
+    setDownloadError(null);
+    try {
+      const res = await fetch('/api/admin/download-source-code');
+      if (!res.ok) {
+        throw new Error('Server returned an error while archiving files');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.download = `cartgo-marketplace-source-${dateStr}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setDownloadSuccess('🎉 Complete source code ZIP downloaded successfully to your computer!');
+      setTimeout(() => setDownloadSuccess(null), 8000);
+    } catch (err: any) {
+      console.error('Error downloading source code:', err);
+      setDownloadError(err.message || 'Failed to download source code archive');
+      setTimeout(() => setDownloadError(null), 8000);
+    } finally {
+      setDownloadingCode(false);
+    }
+  };
+
+  const fetchSmtpStatus = async () => {
+    try {
+      const res = await fetch('/api/admin/smtp-status');
+      if (res.ok) {
+        const data = await res.json();
+        setSmtpStatus(data);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch SMTP status:', e);
+    }
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSendingTestEmail(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/admin/send-test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetEmail: testEmailRecipient }),
+      });
+      const data = await res.json();
+      setTestEmailResult(data);
+    } catch (err: any) {
+      setTestEmailResult({
+        success: false,
+        error: err.message || 'Failed to dispatch test email request.',
+      });
+    } finally {
+      setSendingTestEmail(false);
+    }
+  };
+
+  const handleCopySetupCommand = () => {
+    navigator.clipboard.writeText('npm install && npm run dev');
+    setCopiedCommand(true);
+    setTimeout(() => setCopiedCommand(false), 3000);
   };
 
   const handleToggleAccountStatus = async (user: UserProfile) => {
@@ -680,6 +820,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDownloadSourceCode}
+              disabled={downloadingCode}
+              className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 active:scale-95 text-white rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 shadow-xs border border-purple-400/30 disabled:opacity-50"
+              title="Download Whole Project Source Code as a ZIP Archive"
+            >
+              <Download className={`w-3.5 h-3.5 ${downloadingCode ? 'animate-bounce' : ''}`} />
+              <span className="hidden sm:inline">{downloadingCode ? 'Packaging Code...' : 'Download Code (.ZIP)'}</span>
+              <span className="sm:hidden">{downloadingCode ? '...' : '.ZIP'}</span>
+            </button>
+
+            <button
               onClick={fetchAdminData}
               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-colors text-xs font-medium flex items-center gap-1"
               title="Refresh Data"
@@ -696,6 +847,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
           </div>
         </div>
 
+        {downloadSuccess && (
+          <div className="bg-purple-600 text-white px-6 py-2.5 text-xs font-bold flex items-center justify-between animate-in slide-in-from-top duration-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-300" />
+              <span>{downloadSuccess}</span>
+            </div>
+            <button onClick={() => setDownloadSuccess(null)} className="p-1 hover:bg-purple-700 rounded-lg">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {downloadError && (
+          <div className="bg-rose-600 text-white px-6 py-2.5 text-xs font-bold flex items-center justify-between animate-in slide-in-from-top duration-200">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-300" />
+              <span>{downloadError}</span>
+            </div>
+            <button onClick={() => setDownloadError(null)} className="p-1 hover:bg-rose-700 rounded-lg">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {resetSuccess && (
           <div className="bg-emerald-600 text-white px-6 py-2.5 text-xs font-bold flex items-center justify-between animate-in slide-in-from-top duration-200">
             <span>{resetSuccess}</span>
@@ -706,7 +881,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
         )}
 
         {/* Tab Selection */}
-        <div className="bg-slate-100 border-b border-slate-200 px-6 pt-3 flex gap-2">
+        <div className="bg-slate-100 border-b border-slate-200 px-6 pt-3 flex flex-wrap gap-2">
           <button
             onClick={() => setActiveTab('sellers')}
             className={`py-2.5 px-4 font-bold text-xs rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
@@ -741,6 +916,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
           >
             <Bell className="w-4 h-4" />
             <span>Send Seller Notifications</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('code');
+              fetchCodeStats();
+            }}
+            className={`py-2.5 px-4 font-bold text-xs rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
+              activeTab === 'code'
+                ? 'bg-white text-purple-600 border-purple-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-200/50'
+            }`}
+          >
+            <Code2 className="w-4 h-4" />
+            <span>Source Code & Download</span>
+            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-extrabold">.ZIP</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('email');
+              fetchSmtpStatus();
+            }}
+            className={`py-2.5 px-4 font-bold text-xs rounded-t-xl transition-all flex items-center gap-2 border-b-2 ${
+              activeTab === 'email'
+                ? 'bg-white text-emerald-600 border-emerald-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-200/50'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            <span>Email & Verification SMTP</span>
+            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-extrabold">cartgosupport@gmail.com</span>
           </button>
         </div>
 
@@ -811,6 +1018,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                             <th className="p-3">Email</th>
                             <th className="p-3">Contact Number</th>
                             <th className="p-3">Role</th>
+                            <th className="p-3">Account Password</th>
                             <th className="p-3 text-center">Total Orders</th>
                             <th className="p-3 text-right">Total Revenue</th>
                             <th className="p-3">Account Status</th>
@@ -820,7 +1028,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                         <tbody className="divide-y divide-slate-100">
                           {displayUsersList.length === 0 ? (
                             <tr>
-                              <td colSpan={8} className="p-8 text-center text-slate-400">
+                              <td colSpan={9} className="p-8 text-center text-slate-400">
                                 {showSellersOnly
                                   ? 'No registered seller accounts found. (Sellers will appear here as soon as they sign up or list products).'
                                   : 'No registered users found matching your search.'}
@@ -829,6 +1037,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                           ) : (
                             displayUsersList.map((user) => {
                               const stats = sellerStatsMap.get(user.uid) || { totalOrders: 0, totalRevenue: 0 };
+                              const userPassword = user.customPassword || user.registeredPassword || 'CartGo2026!';
+                              const isPasswordRevealed = !!revealedPasswords[user.uid];
+                              const isSuperAdminEmail =
+                                user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' ||
+                                user.email?.toLowerCase() === 'cartgosupport@gmail.com';
+
                               return (
                                 <tr
                                   key={user.uid}
@@ -837,12 +1051,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                   }`}
                                 >
                                   <td className="p-3 pl-4 font-bold text-slate-900 flex items-center gap-2">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase ${user.role === 'seller' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-700'}`}>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase ${
+                                      user.role === 'seller' 
+                                        ? 'bg-orange-100 text-orange-700' 
+                                        : user.role === 'manager'
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : user.role === 'admin'
+                                        ? 'bg-purple-100 text-purple-700'
+                                        : 'bg-slate-100 text-slate-700'
+                                    }`}>
                                       {user.displayName ? user.displayName.charAt(0) : 'U'}
                                     </div>
                                     <div>
                                       <span>{user.displayName || 'Marketplace User'}</span>
                                       <span className="block text-[10px] font-normal text-slate-400">UID: {user.uid.slice(0, 10)}...</span>
+                                      {user.storeName && (
+                                        <span className="block text-[10px] font-semibold text-blue-600">Store: {user.storeName}</span>
+                                      )}
                                     </div>
                                   </td>
                                   <td className="p-3 text-slate-600 font-medium">
@@ -863,11 +1088,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                         ? 'bg-purple-100 text-purple-700'
                                         : user.role === 'seller'
                                         ? 'bg-orange-100 text-orange-700'
+                                        : user.role === 'manager'
+                                        ? 'bg-blue-100 text-blue-700'
                                         : 'bg-slate-100 text-slate-700'
                                     }`}>
-                                      {user.role}
+                                      {user.role === 'manager' ? 'Store Manager' : user.role}
                                     </span>
                                   </td>
+
+                                  {/* Super Admin Password Visibility Column */}
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
+                                      <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      <span className="font-mono text-xs font-bold text-slate-900 select-all min-w-[70px]">
+                                        {isPasswordRevealed ? userPassword : '••••••••'}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePasswordVisibility(user.uid)}
+                                        className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition-colors"
+                                        title={isPasswordRevealed ? 'Hide Password' : 'Show Password (Super Admin Only)'}
+                                      >
+                                        {isPasswordRevealed ? (
+                                          <EyeOff className="w-3.5 h-3.5 text-purple-600" />
+                                        ) : (
+                                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyUserPassword(user)}
+                                        className="p-1 text-slate-400 hover:text-[#FF5500] hover:bg-orange-50 rounded transition-colors"
+                                        title="Copy User Password"
+                                      >
+                                        {copiedPasswordId === user.uid ? (
+                                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        ) : (
+                                          <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  </td>
+
                                   <td className="p-3 text-center">
                                     <span className="inline-block px-2.5 py-1 bg-slate-100 text-slate-800 font-extrabold text-xs rounded-lg border border-slate-200">
                                       {stats.totalOrders}
@@ -890,14 +1152,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                                     )}
                                   </td>
                                   <td className="p-3 text-right pr-4">
-                                     {user.email?.toLowerCase() === 'hashirfarman0047@gmail.com' || user.email?.toLowerCase() === 'cartgosupport@gmail.com' ? (
+                                     {isSuperAdminEmail ? (
                                        <span className="text-[10px] text-slate-400 font-bold">Protected</span>
                                      ) : (
                                        <div className="flex items-center justify-end gap-1.5">
                                          <button
                                            onClick={() => handleOpenPasswordModal(user)}
                                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs transition-colors shadow-xs flex items-center gap-1"
-                                           title="Change User Password"
+                                           title="View & Change User Password"
                                          >
                                            <Key className="w-3 h-3" />
                                            <span>Password</span>
@@ -1196,6 +1458,378 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                   </div>
                 </div>
               )}
+
+              {/* TAB 4: SOURCE CODE EXPORT & BACKUP */}
+              {activeTab === 'code' && (
+                <div className="space-y-6">
+                  {/* Hero Download Card */}
+                  <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-6 sm:p-8 rounded-2xl border border-indigo-900/50 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                      <div className="space-y-2 max-w-xl">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-bold">
+                          <FolderArchive className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Full-Stack Marketplace Codebase</span>
+                        </div>
+                        <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                          Download Whole Project Source Code (.ZIP)
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                          Export the entire production-ready source tree including all React components, Express backend APIs, Gemini AI batch generators, Firebase configuration, styles, and full project dependencies.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto shrink-0">
+                        <button
+                          onClick={handleDownloadSourceCode}
+                          disabled={downloadingCode}
+                          className="px-6 py-3.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 active:scale-95 text-white font-extrabold text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2.5 border border-purple-400/40 disabled:opacity-50"
+                        >
+                          <Download className={`w-5 h-5 ${downloadingCode ? 'animate-bounce' : ''}`} />
+                          <span>{downloadingCode ? 'Packaging Source Archive...' : 'Download Code (.ZIP)'}</span>
+                        </button>
+
+                        <button
+                          onClick={handleCopySetupCommand}
+                          className="px-4 py-2 bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-semibold rounded-xl transition-colors border border-white/10 flex items-center justify-center gap-2"
+                        >
+                          {copiedCommand ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-300">Copied to Clipboard!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Copy Local Run: npm i && npm run dev</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Codebase Metrics */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                        <FileCode className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-slate-500 font-semibold">Total Source Files</p>
+                        <h4 className="text-lg font-black text-slate-900">
+                          {codeStats ? `${codeStats.fileCount} Files` : loadingCodeStats ? 'Scanning...' : '35+ Files'}
+                        </h4>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                        <HardDrive className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-slate-500 font-semibold">Source Package Size</p>
+                        <h4 className="text-lg font-black text-slate-900">
+                          {codeStats ? `~${codeStats.totalSizeKB} KB` : loadingCodeStats ? 'Calculating...' : '~500 KB'}
+                        </h4>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                        <Layers className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-slate-500 font-semibold">Architecture</p>
+                        <h4 className="text-sm font-black text-emerald-700 truncate">React 19 + Express</h4>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-slate-500 font-semibold">Export Format</p>
+                        <h4 className="text-sm font-black text-amber-700">Standard .ZIP Archive</h4>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Two Column Grid: File Explorer & Local Run Instructions */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left: Source File Inspector */}
+                    <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
+                      <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Code2 className="w-4 h-4 text-purple-400" />
+                          <h4 className="text-xs font-bold uppercase tracking-wider">Project Files Tree</h4>
+                        </div>
+                        <button
+                          onClick={fetchCodeStats}
+                          disabled={loadingCodeStats}
+                          className="text-[11px] text-purple-300 hover:text-white flex items-center gap-1 font-semibold"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${loadingCodeStats ? 'animate-spin' : ''}`} />
+                          <span>Scan Files</span>
+                        </button>
+                      </div>
+
+                      <div className="p-3 border-b border-slate-100 bg-slate-50/50">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={codeFileSearch}
+                            onChange={(e) => setCodeFileSearch(e.target.value)}
+                            placeholder="Search project files (e.g. AdminDashboard, server.ts, firebase)..."
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-2 overflow-y-auto max-h-[380px] divide-y divide-slate-100 font-mono text-xs">
+                        {loadingCodeStats && !codeStats ? (
+                          <div className="p-8 text-center text-slate-400 text-xs">
+                            <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2 text-purple-600" />
+                            <span>Scanning workspace directory files...</span>
+                          </div>
+                        ) : !codeStats || codeStats.files.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs font-sans">
+                            Click "Scan Files" to inspect project source directory.
+                          </div>
+                        ) : (
+                          codeStats.files
+                            .filter((f) => f.path.toLowerCase().includes(codeFileSearch.toLowerCase()))
+                            .map((f) => {
+                              const isTsx = f.path.endsWith('.tsx');
+                              const isTs = f.path.endsWith('.ts') && !isTsx;
+                              const isJson = f.path.endsWith('.json');
+                              const isCss = f.path.endsWith('.css');
+                              const isHtml = f.path.endsWith('.html');
+
+                              return (
+                                <div
+                                  key={f.path}
+                                  className="py-1.5 px-3 flex items-center justify-between hover:bg-slate-50 rounded-lg transition-colors group"
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    {isTsx ? (
+                                      <FileCode className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                    ) : isTs ? (
+                                      <FileCode className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                    ) : isJson ? (
+                                      <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    ) : isCss ? (
+                                      <FileText className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                                    ) : isHtml ? (
+                                      <FileCode className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                                    ) : (
+                                      <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    )}
+                                    <span className="text-slate-800 group-hover:text-purple-700 truncate font-sans text-xs">
+                                      {f.path}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 shrink-0 font-sans ml-2">
+                                    {(f.size / 1024).toFixed(1)} KB
+                                  </span>
+                                </div>
+                              );
+                            })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Setup Instructions & Options */}
+                    <div className="lg:col-span-5 space-y-4">
+                      {/* Local Run Guide */}
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <Terminal className="w-4 h-4 text-emerald-600" />
+                          <span>How to Run Locally on Your PC</span>
+                        </h4>
+
+                        <div className="space-y-2 text-xs text-slate-600">
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="font-bold text-slate-800 mb-1">1. Unzip the downloaded file</p>
+                            <p className="text-[11px] text-slate-500">Extract <code className="bg-slate-200 px-1 rounded text-slate-800">cartgo-source-code.zip</code> to any folder on your computer.</p>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="font-bold text-slate-800 mb-1">2. Install packages & dependencies</p>
+                            <code className="block bg-slate-900 text-emerald-400 p-2 rounded text-[11px] font-mono select-all">
+                              npm install
+                            </code>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="font-bold text-slate-800 mb-1">3. Configure your API key</p>
+                            <p className="text-[11px] text-slate-500 mb-1">Create a <code className="bg-slate-200 px-1 rounded text-slate-800">.env</code> file:</p>
+                            <code className="block bg-slate-900 text-purple-300 p-2 rounded text-[11px] font-mono select-all">
+                              GEMINI_API_KEY=your_gemini_key
+                            </code>
+                          </div>
+
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="font-bold text-slate-800 mb-1">4. Start development server</p>
+                            <code className="block bg-slate-900 text-emerald-400 p-2 rounded text-[11px] font-mono select-all">
+                              npm run dev
+                            </code>
+                            <p className="text-[10px] text-slate-400 mt-1">Runs server on <code className="text-slate-700">http://localhost:3000</code></p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* AI Studio Platform Export */}
+                      <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 text-xs text-indigo-900 space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-indigo-950">
+                          <ExternalLink className="w-4 h-4 text-indigo-600" />
+                          <span>AI Studio Export Alternative</span>
+                        </div>
+                        <p className="text-[11px] text-indigo-700 leading-relaxed">
+                          You can also export directly via Google AI Studio's top menu (Share / Export to GitHub or ZIP). Both options export the identical complete repository.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: EMAIL & VERIFICATION SMTP DIAGNOSTICS */}
+              {activeTab === 'email' && (
+                <div className="space-y-6">
+                  {/* Top Status Header */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md">
+                        <Mail className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                          <span>Cart Go Official Account Verification Service</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${smtpStatus?.configured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {smtpStatus?.configured ? 'Live Gmail SMTP Configured' : 'Simulated / Hybrid Mode Active'}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Official sender address: <strong className="text-emerald-700 font-mono">cartgosupport@gmail.com</strong>
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={fetchSmtpStatus}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Refresh Status</span>
+                    </button>
+                  </div>
+
+                  {/* Two Column Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left Column: Live Test Email Sender */}
+                    <div className="lg:col-span-6 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                      <div className="border-b border-slate-100 pb-3">
+                        <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <Send className="w-4 h-4 text-emerald-600" />
+                          <span>Send Test Email from cartgosupport@gmail.com</span>
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Verify that live emails and 6-digit confirmation codes are successfully delivered to inboxes.
+                        </p>
+                      </div>
+
+                      <form onSubmit={handleSendTestEmail} className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Recipient Email Address
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            value={testEmailRecipient}
+                            onChange={(e) => setTestEmailRecipient(e.target.value)}
+                            placeholder="Enter any recipient email (e.g. your personal Gmail)..."
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={sendingTestEmail}
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>{sendingTestEmail ? 'Sending Test Email...' : 'Send Live Test Email'}</span>
+                        </button>
+                      </form>
+
+                      {/* Result Box */}
+                      {testEmailResult && (
+                        <div className={`p-4 rounded-xl text-xs font-medium border ${testEmailResult.success ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>
+                          <div className="font-bold flex items-center gap-1.5 mb-1">
+                            {testEmailResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
+                            <span>{testEmailResult.success ? 'Success!' : 'Configuration Notice'}</span>
+                          </div>
+                          <p className="text-[11px] leading-relaxed">
+                            {testEmailResult.message || testEmailResult.error}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column: Gmail Configuration & Registration Flow Overview */}
+                    <div className="lg:col-span-6 space-y-4">
+                      {/* Registration Verification Protocol */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                        <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-[#FF5500]" />
+                          <span>Instant Registration & Email Support</span>
+                        </h4>
+                        <div className="space-y-2 text-xs text-slate-600 leading-relaxed">
+                          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-[#FF5500] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</span>
+                            <div>
+                              <strong className="text-slate-800">Instant Account Creation:</strong> Users register directly with their Name, Phone, Email, and Password without any email verification code barrier.
+                            </div>
+                          </div>
+                          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-[#FF5500] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</span>
+                            <div>
+                              <strong className="text-slate-800">Direct Database Sync:</strong> Accounts are instantly saved to Firestore and local registry for seamless immediate shopping and selling.
+                            </div>
+                          </div>
+                          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-[#FF5500] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</span>
+                            <div>
+                              <strong className="text-slate-800">Support & Password Resets from cartgosupport@gmail.com:</strong> Official SMTP dispatch sends password reset notifications and store announcements.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Setup Guide for Live Gmail SMTP */}
+                      <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-xs space-y-2.5">
+                        <h4 className="font-bold text-xs text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                          <Key className="w-4 h-4" />
+                          <span>Gmail App Password Configuration</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          To send real emails from <code className="text-amber-300">cartgosupport@gmail.com</code> into real inboxes:
+                        </p>
+                        <ol className="list-decimal list-inside text-[11px] text-slate-300 space-y-1 pl-1">
+                          <li>Go to Google Account (<code className="text-amber-300">cartgosupport@gmail.com</code>) &gt; Security.</li>
+                          <li>Enable 2-Step Verification if not active.</li>
+                          <li>Search for <strong>"App passwords"</strong> and generate a 16-character password.</li>
+                          <li>Set <code className="text-amber-300">GMAIL_APP_PASSWORD=your_16_char_password</code> in Settings / Secrets.</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1222,11 +1856,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
             {/* Body */}
             <div className="p-5 space-y-4">
               {/* Target User Info Card */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1 text-xs">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 text-xs">
                 <div className="flex justify-between items-center">
                   <span className="font-bold text-slate-900">{selectedUserForPasswordChange.displayName || 'Marketplace User'}</span>
                   <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-extrabold uppercase text-[10px]">
-                    {selectedUserForPasswordChange.role}
+                    {selectedUserForPasswordChange.role === 'manager' ? 'Store Manager' : selectedUserForPasswordChange.role}
                   </span>
                 </div>
                 <div className="text-slate-600 flex items-center gap-1.5">
@@ -1235,6 +1869,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ isOpen, onClose 
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">
                   UID: {selectedUserForPasswordChange.uid}
+                </div>
+
+                {/* Current Active Password Box */}
+                <div className="mt-2 pt-2 border-t border-slate-200 flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200/80">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block">Current Account Password:</span>
+                    <span className="font-mono text-xs font-black text-purple-900">
+                      {showCurrentPasswordText
+                        ? (selectedUserForPasswordChange.customPassword || selectedUserForPasswordChange.registeredPassword || 'CartGo2026!')
+                        : '••••••••••••'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPasswordText(!showCurrentPasswordText)}
+                      className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors"
+                      title={showCurrentPasswordText ? 'Hide Password' : 'Show Password'}
+                    >
+                      {showCurrentPasswordText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyUserPassword(selectedUserForPasswordChange)}
+                      className="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-md transition-colors flex items-center gap-1 text-[11px]"
+                      title="Copy Password"
+                    >
+                      {copiedPasswordId === selectedUserForPasswordChange.uid ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 

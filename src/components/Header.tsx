@@ -14,9 +14,11 @@ import {
   PlusCircle,
   ArrowLeft,
   Bell,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { useChat } from '../context/ChatContext';
 import { CATEGORIES } from '../data/categories';
 import { CartGoLogo } from './CartGoLogo';
 
@@ -49,6 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { currentUser, userProfile, isAdmin, logout } = useAuth();
   const { totalItemsCount, wishlist } = useCart();
+  const { setIsCustomerChatOpen, totalUnreadForCustomer } = useChat();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -153,6 +156,20 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Action Icons */}
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Customer Live Chat Button */}
+            <button
+              onClick={() => setIsCustomerChatOpen(true)}
+              className="relative p-2 text-white hover:bg-orange-600 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Customer Live Chat Support"
+            >
+              <MessageSquare className="w-6 h-6 text-[#FF9900]" />
+              {totalUnreadForCustomer > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#FF5500] text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full border border-slate-900 animate-pulse">
+                  {totalUnreadForCustomer}
+                </span>
+              )}
+            </button>
+
             {/* Notifications Icon for Logged in Users */}
             {currentUser && onOpenNotifications && (
               <button
@@ -231,8 +248,18 @@ export const Header: React.FC<HeaderProps> = ({
                         {userProfile?.displayName || 'Marketplace User'}
                       </p>
                       <p className="text-[11px] text-slate-500 truncate">{currentUser.email}</p>
-                      <span className="inline-block mt-1 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-full uppercase">
-                        {userProfile?.role || 'buyer'}
+                      <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${
+                        userProfile?.role === 'manager'
+                          ? 'bg-blue-50 text-blue-700'
+                          : userProfile?.role === 'seller'
+                          ? 'bg-orange-50 text-orange-600'
+                          : userProfile?.role === 'admin'
+                          ? 'bg-purple-50 text-purple-700'
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {userProfile?.role === 'manager'
+                          ? `Store Manager${userProfile.storeName ? ` (${userProfile.storeName})` : ''}`
+                          : userProfile?.role || 'buyer'}
                       </span>
                     </div>
 
@@ -268,7 +295,7 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full text-left px-4 py-2 text-xs text-slate-700 hover:bg-orange-50 hover:text-orange-600 flex items-center gap-2"
                     >
                       <PlusCircle className="w-4 h-4 text-orange-500" />
-                      <span>Seller Dashboard (Sell)</span>
+                      <span>{userProfile?.role === 'manager' ? 'Store Manager Dashboard' : 'Seller Dashboard (Sell)'}</span>
                     </button>
 
                     <div className="border-t border-slate-100 my-1"></div>

@@ -24,6 +24,7 @@ import {
 import { Product, Review } from '../types';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useChat } from '../context/ChatContext';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { formatPKR } from '../utils/formatters';
@@ -49,6 +50,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 }) => {
   const { addToCart, toggleWishlist, isInWishlist } = useCart();
   const { currentUser, userProfile } = useAuth();
+  const { openCustomerChatWithSeller } = useChat();
   const [selectedImage, setSelectedImage] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -329,27 +331,41 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               </div>
 
               {/* Seller Action Links */}
-              <div className="flex items-center gap-2 pt-1 border-t border-orange-100">
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-orange-100">
+                {product.sellerId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openCustomerChatWithSeller(product.sellerId!, product.sellerName || 'Seller', product);
+                    }}
+                    className="flex-1 py-1.5 px-3 bg-gradient-to-r from-[#FF9900] to-[#FF5500] hover:from-[#FF8800] hover:to-[#E04400] text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                    title="Start real-time chat with seller"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Chat with Seller</span>
+                  </button>
+                )}
+
                 {product.sellerId && onSelectStore && (
                   <button
                     onClick={() => {
                       onClose();
                       onSelectStore(product.sellerId!);
                     }}
-                    className="flex-1 py-1.5 px-3 bg-white hover:bg-orange-100 text-[#FF5500] border border-orange-200 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                    className="py-1.5 px-3 bg-white hover:bg-orange-100 text-[#FF5500] border border-orange-200 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Visit Store Page</span>
+                    <span>Store Page</span>
                   </button>
                 )}
 
                 <button
                   onClick={handleShareStore}
-                  className="py-1.5 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors relative"
+                  className="py-1.5 px-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors relative cursor-pointer"
                   title="Share Store Link"
                 >
                   {storeCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-slate-500" />}
-                  <span>{storeCopied ? 'Store Copied!' : 'Share Store'}</span>
+                  <span>{storeCopied ? 'Copied!' : 'Share'}</span>
                 </button>
               </div>
             </div>
@@ -553,7 +569,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleAddToCartWithValidation}
-                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200"
+                  className="py-3 px-4 bg-orange-50 hover:bg-orange-100 text-[#FF5500] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors border border-orange-200 cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>Add to Cart</span>
@@ -561,11 +577,26 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
                 <button
                   onClick={handleBuyNowWithValidation}
-                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md"
+                  className="py-3 px-4 bg-[#FF5500] hover:bg-[#E04400] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md cursor-pointer"
                 >
                   <span>Buy Now</span>
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  openCustomerChatWithSeller(
+                    product.sellerId || 'seller',
+                    product.sellerName || 'Verified Merchant',
+                    product
+                  );
+                }}
+                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer group"
+              >
+                <MessageSquare className="w-4 h-4 text-[#FF9900] group-hover:scale-110 transition-transform" />
+                <span>Ask Seller a Question (Live Chat Support)</span>
+              </button>
 
               <div className="flex items-center gap-2">
                 <button

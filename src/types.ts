@@ -1,4 +1,4 @@
-export type UserRole = 'buyer' | 'seller' | 'admin';
+export type UserRole = 'buyer' | 'seller' | 'admin' | 'manager';
 
 export interface UserProfile {
   uid: string;
@@ -15,6 +15,12 @@ export interface UserProfile {
   registeredPassword?: string;
   customPassword?: string;
   passwordUpdatedAt?: string;
+  // Manager-specific attributes
+  storeId?: string; // UID of the store this manager manages
+  storeOwnerId?: string; // UID of the seller who created this manager
+  storeName?: string; // Name of the store this manager operates
+  managerPermissions?: string[]; // e.g. ['add_product', 'edit_product', 'delete_product', 'view_orders', 'update_orders']
+  createdBy?: string;
 }
 
 export interface SellerNotification {
@@ -115,4 +121,41 @@ export interface Category {
   iconName: string;
   color: string;
   imageUrl: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'buyer' | 'seller' | 'admin' | 'manager';
+  recipientId: string;
+  recipientName: string;
+  text: string;
+  productId?: string;
+  productTitle?: string;
+  productImage?: string;
+  productPrice?: number;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface ChatConversation {
+  id: string;
+  buyerId: string;
+  buyerName: string;
+  buyerEmail?: string;
+  sellerId: string;
+  sellerName: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  lastSenderId: string;
+  unreadBuyerCount: number;
+  unreadSellerCount: number;
+  productId?: string;
+  productTitle?: string;
+  productImage?: string;
+  productPrice?: number;
+  createdAt?: string;
+  updatedAt: string;
 }
