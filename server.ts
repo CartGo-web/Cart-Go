@@ -722,6 +722,23 @@ npm start
     }
   });
 
+  // Explicitly serve manifest with application/manifest+json for Chromium/Android PWA criteria
+  app.get(['/manifest.webmanifest', '/manifest.json'], (req, res, next) => {
+    const manifestFile = req.path.includes('manifest.json') ? 'manifest.json' : 'manifest.webmanifest';
+    const publicPath = path.join(process.cwd(), 'public', manifestFile);
+    const distPath = path.join(process.cwd(), 'dist', manifestFile);
+    
+    if (fs.existsSync(distPath)) {
+      res.setHeader('Content-Type', 'application/manifest+json');
+      return res.sendFile(distPath);
+    }
+    if (fs.existsSync(publicPath)) {
+      res.setHeader('Content-Type', 'application/manifest+json');
+      return res.sendFile(publicPath);
+    }
+    next();
+  });
+
   // Vite middleware for development vs static build for production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

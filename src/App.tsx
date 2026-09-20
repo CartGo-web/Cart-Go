@@ -19,6 +19,8 @@ import { WishlistModal } from './components/WishlistModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { NotificationsModal } from './components/NotificationsModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { PWAInstallBanner } from './components/PWAInstallBanner';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { Review, Product } from './types';
 import { db } from './lib/firebase';
 import { SEED_PRODUCTS } from './data/seedProducts';
@@ -412,6 +414,9 @@ function MarketplaceMain() {
         setSearchQuery={setSearchQuery}
         onOpenWishlist={() => setWishlistModalOpen(true)}
       />
+
+      {/* PWA Install Banner */}
+      <PWAInstallBanner />
 
       {/* Order Success Banner */}
       {orderSuccessId && (
@@ -920,6 +925,9 @@ function MarketplaceMain() {
           setSelectedStoreId(null);
         }}
       />
+
+      {/* Offline Status Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

@@ -1,0 +1,71 @@
+{
+  "id": "/",
+  "name": "Cart Go - Shop More, Get More",
+  "short_name": "Cart Go",
+  "description": "Shop More, Get More - Fast, reliable online marketplace for electronics, fashion, home essentials, and more with instant customer chat.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#FF5500",
+  "background_color": "#0F172A",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": [
+    "shopping",
+    "lifestyle",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Shop & Browse",
+      "short_name": "Browse",
+      "description": "Explore hot deals and top products on Cart Go",
+      "url": "/?shortcut=browse",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Sell on Cart Go",
+      "short_name": "Sell",
+      "description": "Open your online shop on Cart Go marketplace",
+      "url": "/?shortcut=seller",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { useCart } from '../context/CartContext';
 import { useChat } from '../context/ChatContext';
 import { CATEGORIES } from '../data/categories';
 import { CartGoLogo } from './CartGoLogo';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   onOpenAuth: () => void;
@@ -61,9 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <span className="hover:text-orange-400 cursor-pointer hidden sm:inline">
-              Save More on Cart Go App
-            </span>
+            <PWAInstallButton variant="topbar" />
             <span className="text-slate-600 hidden sm:inline">|</span>
             <button
               onClick={onOpenSeller}
@@ -212,6 +211,9 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <span className="hidden lg:inline text-xs font-semibold">Cart</span>
             </button>
+
+            {/* PWA Download App Button */}
+            <PWAInstallButton variant="header-action" />
 
             {/* Super Admin Console direct button for Super Admin */}
             {(isAdmin || userProfile?.role === 'admin') && onOpenAdmin && (
@@ -457,6 +459,9 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[10px] bg-slate-900 text-amber-300 px-2 py-0.5 rounded font-mono">ADMIN</span>
             </button>
           )}
+
+          {/* Download App Mobile Item */}
+          <PWAInstallButton variant="mobile-item" />
 
           <div className="grid grid-cols-2 gap-2 text-xs">
             <button

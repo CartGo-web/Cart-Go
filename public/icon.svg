@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="pwaBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="pwaOrangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9900" />
+      <stop offset="50%" stop-color="#FF5500" />
+      <stop offset="100%" stop-color="#E03000" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="512" height="512" rx="110" fill="url(#pwaBgGrad)" />
+  <rect x="24" y="24" width="464" height="464" rx="90" fill="none" stroke="url(#pwaOrangeGrad)" stroke-width="6" opacity="0.6" />
+
+  <!-- Shopping Cart Icon -->
+  <g transform="translate(16, 20)">
+    <!-- Speed Motion Lines behind cart -->
+    <g fill="url(#pwaOrangeGrad)">
+      <rect x="80" y="150" width="50" height="8" rx="4" opacity="0.8" />
+      <rect x="100" y="175" width="40" height="8" rx="4" opacity="0.8" />
+      <rect x="75" y="200" width="60" height="8" rx="4" opacity="0.8" />
+      <rect x="95" y="225" width="35" height="8" rx="4" opacity="0.8" />
+    </g>
+
+    <!-- Main Cart Outer Shape -->
+    <path d="M 150 120 
+             C 175 120, 190 130, 200 160 
+             L 330 160 
+             C 345 160, 345 175, 330 180
+             L 220 180
+             C 195 180, 190 195, 195 220
+             C 200 260, 215 280, 265 280
+             L 305 280
+             C 320 280, 320 295, 305 295
+             L 255 295
+             C 195 295, 170 260, 165 200
+             L 155 160
+             C 150 145, 140 140, 125 140
+             L 115 140
+             C 105 140, 105 120, 115 120 Z" 
+          fill="url(#pwaOrangeGrad)" />
+
+    <!-- Cart Bowl -->
+    <path d="M 195 165 
+             L 330 165 
+             C 345 165, 340 270, 260 270 
+             C 205 270, 190 230, 195 165 Z" 
+          fill="url(#pwaOrangeGrad)" />
+
+    <!-- White G inside Cart -->
+    <path d="M 310 190 
+             L 255 190 
+             C 235 190, 225 200, 225 220 
+             C 225 240, 235 250, 255 250 
+             L 300 250 
+             C 315 250, 320 240, 320 225 
+             L 275 225 
+             L 275 210 
+             L 325 210 
+             C 330 210, 335 215, 335 225 
+             C 335 255, 315 265, 255 265 
+             C 215 265, 205 245, 205 220 
+             C 205 195, 220 175, 260 175 
+             L 310 175 Z" 
+          fill="#FFFFFF" />
+
+    <!-- Cart Wheels -->
+    <circle cx="210" cy="310" r="18" fill="url(#pwaOrangeGrad)" />
+    <circle cx="210" cy="310" r="8" fill="#0F172A" />
+    <circle cx="285" cy="310" r="18" fill="url(#pwaOrangeGrad)" />
+    <circle cx="285" cy="310" r="8" fill="#0F172A" />
+
+    <!-- CART GO Text -->
+    <text x="145" y="375" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="44" letter-spacing="3" fill="#FFFFFF">CART</text>
+    <text x="270" y="375" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="44" letter-spacing="3" fill="url(#pwaOrangeGrad)">GO</text>
+  </g>
+</svg>
